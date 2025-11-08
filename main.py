@@ -1,34 +1,26 @@
-# main.py — flat layout for Render
-
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+# main.py — flat repo layout (all .py in repo root)
 import os
 import time
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
-# your routers live as top-level files: health.py, format.py, compile.py, download.py, events.py
+# local imports — NO "app." prefix in a flat layout
 from health import router as health_router
 from format import router as format_router
 from compile import router as compile_router
 from download import router as download_router
-# comment out if you didn't add events yet:
-# from events import router as events_router
+from events import router as events_router  # if you created /events
 
-# optional: tiny logger (uses stdout on Render)
-def get_logger():
-    import logging, sys
-    logger = logging.getLogger("paperpolish")
-    if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-        logger.addHandler(handler)
-    logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
-    return logger
-
-logger = get_logger()
+# optional logger utility (safe to keep even if no-op)
+try:
+    from logger import get_logger
+    logger = get_logger()
+except Exception:  # pragma: no cover
+    logger = None
 
 app = FastAPI(title="PaperPolish API", version="0.1.0")
 
-# CORS
+# --- CORS ---
 origins = os.getenv("ALLOW_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -38,28 +30,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# simple request logging middleware
+# --- Lightweight access logging middleware (optional) ---
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
     try:
         response = await call_next(request)
-        status = response.status_code
         return response
     finally:
-        ms = int((time.time() - start) * 1000)
-        ua = request.headers.get("user-agent", "-")
-        ip = request.client.host if request.client else "-"
-        logger.info(f"{request.method} {request.url.path} {status} {ms}ms ua=\"{ua}\" ip={ip}")
+        if logger:
+            ms = int((time.time() - start) * 1000)
+            ua = request.headers.get("user-agent", "-")
+            ip = request.client.host if request.client else "-"
+            logger.info(
+                f'http method={request.method} path="{request.url.path}" '
+                f'status={getattr(response, "status_code", "-")} '
+                f'ip={ip} ua="{ua}" duration_ms={ms}'
+            )
 
-# routers
-app.include_router(health_router,  prefix="/health",  tags=["health"])
-app.include_router(format_router,  prefix="/format",  tags=["format"])
+# --- Routers ---
+app.include_router(health_router, prefix="/health", tags=["health"])
+app.include_router(format_router, prefix="", tags=["format"])
 app.include_router(compile_router, prefix="/compile", tags=["compile"])
 app.include_router(download_router, prefix="/download", tags=["download"])
-# If you added it:
-# app.include_router(events_router, prefix="/events", tags=["events"])
+app.include_router(events_router, prefix="/events", tags=["events"])
 
+# --- Root ---
 @app.get("/")
 def root():
     return {"name": "PaperPolish API", "version": "0.1.0"}
