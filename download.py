@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from ..services.store import get_zip
+from store import get_zip
 import os
 
 router = APIRouter()
