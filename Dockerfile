@@ -1,14 +1,24 @@
+# Dockerfile (at repository root)
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y     make perl curl git unzip zip pandoc lmodern texlive-latex-base texlive-latex-recommended     texlive-latex-extra texlive-fonts-recommended latexmk &&     cpan App::cpanminus && cpanm LatexIndent &&     rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# System packages you might need for zip/latexindent calls
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Install deps
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
-ENV TEMPLATE_ROOT=/templates
-COPY ../../packages/templates /templates
+# Copy the app
+COPY . .
 
+# Expose and run
+ENV PORT=8000
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
