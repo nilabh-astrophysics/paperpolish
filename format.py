@@ -3,9 +3,9 @@ import uuid
 import shutil
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
-from app.services.latex_formatter import process_archive
-from app.services.store import save_job, jobs_dir
-from app.utils.logger import get_logger  # ✅ Logging added
+from latex_formatter import process_archive
+from store import save_job
+from logger import get_logger
 
 logger = get_logger()
 router = APIRouter()
