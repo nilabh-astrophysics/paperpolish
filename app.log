@@ -1,0 +1,57 @@
+2025-11-07 15:37:03,958 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=4
+2025-11-07 18:30:06,986 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=20
+2025-11-07 18:30:06,998 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=27
+2025-11-07 18:30:07,334 | INFO | event kind=pageview label="upload"
+2025-11-07 18:30:07,339 | INFO | event kind=pageview label="upload"
+2025-11-07 18:30:07,341 | INFO | http method=POST path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=32
+2025-11-07 18:30:07,342 | INFO | http method=POST path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=34
+2025-11-07 18:32:48,599 | INFO | event kind=pageview label="upload"
+2025-11-07 18:32:48,603 | INFO | event kind=pageview label="upload"
+2025-11-07 18:32:48,604 | INFO | http method=POST path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=13
+2025-11-07 18:32:48,606 | INFO | http method=POST path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=14
+2025-11-07 18:33:10,285 | INFO | event kind=format_click label="None"
+2025-11-07 18:33:10,286 | INFO | http method=POST path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=5
+2025-11-07 18:33:10,619 | INFO | job_start id=9201fac9-730c-4a97-aee8-7618090e7e05 file="sample-latex-project.zip" template=aastex options="fix_citations"
+2025-11-07 18:33:12,005 | INFO | job_zip_saved id=9201fac9-730c-4a97-aee8-7618090e7e05 dest="C:\Users\Asus\Documents\paperpolish\paperpolish\apps\api\app\data\jobs\9201fac9-730c-4a97-aee8-7618090e7e05.zip"
+2025-11-07 18:33:12,006 | INFO | job_done id=9201fac9-730c-4a97-aee8-7618090e7e05 warnings=0
+2025-11-07 18:33:12,008 | INFO | http method=POST path="/format" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=1405
+2025-11-07 18:33:12,020 | INFO | event kind=format_success label="None"
+2025-11-07 18:33:12,020 | INFO | http method=POST path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=4
+2025-11-08 09:51:41,668 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=6
+2025-11-08 09:51:41,670 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=8
+2025-11-08 09:51:41,671 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=9
+2025-11-08 09:51:41,673 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=10
+2025-11-08 09:51:41,673 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=11
+2025-11-08 09:51:41,674 | INFO | http method=OPTIONS path="/_events" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=11
+2025-11-08 09:51:41,677 | INFO | job_start id=351b981d-d81f-43a2-98c4-668fc4471ff1 file="sample-latex-project.zip" template=elsevier options="fix_citations"
+2025-11-08 09:51:42,615 | INFO | job_zip_saved id=351b981d-d81f-43a2-98c4-668fc4471ff1 dest="C:\Users\Asus\Documents\paperpolish\paperpolish\apps\api\app\data\jobs\351b981d-d81f-43a2-98c4-668fc4471ff1.zip"
+2025-11-08 09:51:42,615 | INFO | job_done id=351b981d-d81f-43a2-98c4-668fc4471ff1 warnings=0
+2025-11-08 09:51:42,616 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=955
+2025-11-08 09:51:42,616 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=955
+2025-11-08 09:51:42,616 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=955
+2025-11-08 09:51:42,617 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=955
+2025-11-08 09:51:42,617 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=955
+2025-11-08 09:51:42,617 | INFO | http method=POST path="/format" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=955
+2025-11-08 09:51:42,619 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=957
+2025-11-08 09:51:42,619 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=957
+2025-11-08 09:51:42,620 | INFO | http method=GET path="/health" status=200 ip=127.0.0.1 ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" time_ms=957
+2025-11-08 09:58:36,798 | INFO | GET /health status=200 time=2ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:00:49,674 | INFO | OPTIONS /_events status=200 time=1ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:00:49,676 | INFO | OPTIONS /_events status=200 time=2ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:00:49,981 | INFO | POST /_events status=404 time=0ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:00:49,982 | INFO | POST /_events status=404 time=1ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:00:59,892 | INFO | POST /_events status=404 time=0ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:00:59,896 | INFO | job_start id=32b27957-4918-4114-8d72-e51580315697 file="sample-latex-project.zip" template=aastex options="fix_citations"
+2025-11-08 10:01:00,327 | INFO | job_zip_saved id=32b27957-4918-4114-8d72-e51580315697 dest="C:\Users\Asus\Documents\paperpolish\paperpolish\apps\api\app\data\jobs\32b27957-4918-4114-8d72-e51580315697.zip"
+2025-11-08 10:01:00,328 | INFO | job_done id=32b27957-4918-4114-8d72-e51580315697 warnings=0
+2025-11-08 10:01:00,329 | INFO | POST /format status=200 time=434ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 10:01:00,333 | INFO | POST /_events status=404 time=0ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 11:05:38,140 | INFO | OPTIONS /_events status=200 time=12ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 11:05:38,152 | INFO | job_start id=ee32b794-eb93-4525-84a7-9278b20fab86 file="main_final_fixed_refs.tex" template=aastex options="fix_citations"
+2025-11-08 11:05:38,756 | INFO | job_zip_saved id=ee32b794-eb93-4525-84a7-9278b20fab86 dest="C:\Users\Asus\Documents\paperpolish\paperpolish\apps\api\app\data\jobs\ee32b794-eb93-4525-84a7-9278b20fab86.zip"
+2025-11-08 11:05:38,757 | INFO | job_done id=ee32b794-eb93-4525-84a7-9278b20fab86 warnings=1
+2025-11-08 11:05:38,759 | INFO | POST /format status=200 time=630ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 11:05:38,762 | INFO | POST /_events status=404 time=0ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 11:05:38,766 | INFO | POST /_events status=404 time=0ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 13:14:01,880 | INFO | GET /health status=200 time=10ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1
+2025-11-08 13:14:01,920 | INFO | GET /favicon.ico status=404 time=0ms ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" ip=127.0.0.1

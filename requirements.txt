@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-multipart
+openai
+pydantic
+jinja2
+watchfiles
+requests
+annotated-types
