@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from app.utils.logger import get_logger
+from logger import get_logger
 from pathlib import Path
 import json, datetime
 
