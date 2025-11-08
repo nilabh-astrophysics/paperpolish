@@ -2,8 +2,9 @@
 import os
 import uuid
 import shutil
+import json
 
-# Where ZIPs are persisted inside the container
+# Directory for saving job metadata and ZIPs
 DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -24,3 +25,21 @@ def get_zip(job_id: str) -> str | None:
     """
     path = os.path.join(DATA_DIR, f"{job_id}.zip")
     return path if os.path.isfile(path) else None
+
+def save_job(job_id: str, data: dict):
+    """
+    Save metadata (e.g. job parameters, status) as JSON.
+    """
+    path = os.path.join(DATA_DIR, f"{job_id}.json")
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+def load_job(job_id: str) -> dict | None:
+    """
+    Load saved job metadata if available.
+    """
+    path = os.path.join(DATA_DIR, f"{job_id}.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path, "r") as f:
+        return json.load(f)
