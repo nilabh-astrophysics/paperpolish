@@ -1,7 +1,9 @@
 import tempfile, zipfile, subprocess, os, re, shutil
-from .citation_fix import fix_citations
-from .grammar_ai import improve_prose
-from .zip_utils import make_zip
+from citation_fix import fix_citations
+from grammar_ai import improve_prose
+from zip_utils import make_zip
+from store import get_zip, put_zip   # only if you import these here; keep if used
+
 # add this helper just below the imports (before process_archive)
 def safe_latexindent(tex_path: str, warnings: list):
     """Run latexindent if installed, but never hang."""
