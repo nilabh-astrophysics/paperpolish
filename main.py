@@ -21,10 +21,23 @@ except Exception:  # pragma: no cover
 app = FastAPI(title="PaperPolish API", version="0.1.0")
 
 # --- CORS ---
-origins = os.getenv("ALLOW_ORIGINS", "*").split(",")
+ALLOWED = os.getenv("ALLOW_ORIGINS", "").strip()
+
+if ALLOWED:
+    # e.g. "https://paperpolish.vercel.app,http://localhost:3000"
+    origins = [o.strip() for o in ALLOWED.split(",") if o.strip()]
+else:
+    # Safe defaults for production + local dev
+    origins = [
+        "https://paperpolish.vercel.app",
+        "http://localhost:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    # also allow Vercel preview URLs like https://paperpolish-git-*.vercel.app
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
