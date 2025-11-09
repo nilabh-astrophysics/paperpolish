@@ -1,0 +1,6 @@
+apps/web/.next/
+apps/web/node_modules/
+apps/web/.turbo/
+apps/web/dist/
+apps/web/.env.local
+apps/web/.env.production
