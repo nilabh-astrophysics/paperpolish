@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { uploadArchive, waitHealthy } from "../../lib/api";
 import TemplateSelect from "../../components/TemplateSelect";
 import FileDrop from "../../components/FileDrop";
@@ -22,9 +22,22 @@ export default function UploadPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
+  // Gate AI grammar behind an env flag so production doesn't try it unless enabled.
+  const AI_ENABLED = useMemo(
+    () => (process.env.NEXT_PUBLIC_ENABLE_AI || "").toString().trim() === "1",
+    []
+  );
+
+  // If AI is not enabled, make sure it's not accidentally present in options
+  useEffect(() => {
+    if (!AI_ENABLED) {
+      setOptions((prev) => prev.filter((o) => o !== "ai_grammar"));
+    }
+  }, [AI_ENABLED]);
+
   useEffect(() => {
     trackPageview("upload");
-    // wake Render (free tier) quietly
+    // wake the free Render dyno quietly
     waitHealthy();
   }, []);
 
@@ -38,7 +51,10 @@ export default function UploadPage() {
     setDownloadUrl(null);
     setJobId(null);
 
-    track("format_click", { template, options: options.join(","), has_file: !!file });
+    // Final sanitation right before submit (extra safety)
+    const safeOptions = AI_ENABLED ? options : options.filter((o) => o !== "ai_grammar");
+
+    track("format_click", { template, options: safeOptions.join(","), has_file: !!file });
 
     if (!file) {
       const msg = "Please upload a .zip project or a single .tex file.";
@@ -53,7 +69,7 @@ export default function UploadPage() {
       const res: UploadResult = await uploadArchive({
         file,
         template,
-        options,
+        options: safeOptions,
       });
 
       setJobId(res.job_id);
@@ -64,10 +80,10 @@ export default function UploadPage() {
         job_id: res.job_id,
         warnings: (res.warnings || []).length,
         template,
-        options: options.join(","),
+        options: safeOptions.join(","),
       });
     } catch (e: any) {
-      const msg = e?.message || "Upload failed. Check API is running.";
+      const msg = e?.message || "Upload failed. Check that the API is running.";
       setError(msg);
       track("format_error", { message: msg });
     } finally {
@@ -97,17 +113,23 @@ export default function UploadPage() {
               />
               <span className="kv" style={{ marginLeft: 8 }}>Fix citations</span>
             </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={options.includes("ai_grammar")}
-                onChange={() => toggle("ai_grammar")}
-              />
-              <span className="kv" style={{ marginLeft: 8 }}>AI grammar (abstract)</span>
-            </label>
+
+            {AI_ENABLED && (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={options.includes("ai_grammar")}
+                  onChange={() => toggle("ai_grammar")}
+                />
+                <span className="kv" style={{ marginLeft: 8 }}>
+                  AI grammar (abstract)
+                </span>
+              </label>
+            )}
           </div>
 
           <FileDrop onFile={setFile} />
+
           <div className="kv">
             Upload a <code>.zip</code> (project) or a single <code>.tex</code>
           </div>
