@@ -1,179 +1,348 @@
+// apps/web/app/upload/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { uploadArchive, waitHealthy } from "../../lib/api";
-import TemplateSelect from "../../components/TemplateSelect";
-import FileDrop from "../../components/FileDrop";
-import { track, trackPageview } from "../../lib/analytics";
+import React from "react";
+import { API_BASE, uploadArchiveXHR, toFriendlyError, buildDownloadUrl } from "@/lib/api";
 
-type UploadResult = {
-  job_id: string;
-  warnings: string[];
-  download_url?: string;
-};
+type OptionKey = "fix_citations" | "ai_grammar";
+
+const TEMPLATES = [
+  { value: "aastex", label: "AAS Journals (aastex)" },
+  { value: "ieee", label: "IEEE (IEEEtran)" },
+  { value: "elsevier", label: "Elsevier (elsarticle)" },
+];
 
 export default function UploadPage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [template, setTemplate] = useState("aastex");
-  const [options, setOptions] = useState<string[]>(["fix_citations"]);
-  const [loading, setLoading] = useState(false);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [template, setTemplate] = React.useState<string>(TEMPLATES[0].value);
+  const [options, setOptions] = React.useState<Set<OptionKey>>(new Set(["fix_citations"]));
+  const [file, setFile] = React.useState<File | null>(null);
 
-  // Gate AI grammar behind an env flag so production doesn't try it unless enabled.
-  const AI_ENABLED = useMemo(
-    () => (process.env.NEXT_PUBLIC_ENABLE_AI || "").toString().trim() === "1",
-    []
-  );
+  const [stage, setStage] = React.useState<"idle" | "uploading" | "processing" | "done" | "error">("idle");
+  const [progress, setProgress] = React.useState<number>(0);
+  const [error, setError] = React.useState<{ title: string; message: string; details?: string } | null>(null);
+  const [downloadUrl, setDownloadUrl] = React.useState<string | null>(null);
+  const [warnings, setWarnings] = React.useState<string[]>([]);
 
-  // If AI is not enabled, make sure it's not accidentally present in options
-  useEffect(() => {
-    if (!AI_ENABLED) {
-      setOptions((prev) => prev.filter((o) => o !== "ai_grammar"));
-    }
-  }, [AI_ENABLED]);
+  const abortRef = React.useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    trackPageview("upload");
-    // wake the free Render dyno quietly
-    waitHealthy();
-  }, []);
+  const toggle = (k: OptionKey) => {
+    setOptions((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
 
-  function toggle(opt: string) {
-    setOptions((v) => (v.includes(opt) ? v.filter((x) => x !== opt) : [...v, opt]));
-  }
-
-  async function onSubmit() {
+  const onFile = (f: File | null) => {
+    setFile(f);
     setError(null);
-    setWarnings([]);
     setDownloadUrl(null);
-    setJobId(null);
+    setWarnings([]);
+    setStage("idle");
+    setProgress(0);
+  };
 
-    // Final sanitation right before submit (extra safety)
-    const safeOptions = AI_ENABLED ? options : options.filter((o) => o !== "ai_grammar");
-
-    track("format_click", { template, options: safeOptions.join(","), has_file: !!file });
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
 
     if (!file) {
-      const msg = "Please upload a .zip project or a single .tex file.";
-      setError(msg);
-      track("format_error", { message: msg });
+      setError({
+        title: "No file selected",
+        message: "Please choose a .zip project or a single .tex file.",
+      });
       return;
     }
 
+    setError(null);
+    setStage("uploading");
+    setProgress(1);
+
+    const form = new FormData();
+    form.append("archive", file);
+    form.append("template", template);
+    // Backend expects comma-separated options
+    form.append("options", Array.from(options).join(","));
+
+    // Abort control for cancel (optional future button)
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
     try {
-      setLoading(true);
+      const endpoint = `${API_BASE}/format`;
+      const res = await uploadArchiveXHR(endpoint, form, (pct) => setProgress(pct), abortRef.current.signal);
 
-      const res: UploadResult = await uploadArchive({
-        file,
-        template,
-        options: safeOptions,
-      });
+      // Success → compute download URL + gather warnings
+      const url = buildDownloadUrl(res);
+      setDownloadUrl(url);
+      const warn =
+        (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
+      setWarnings(warn);
 
-      setJobId(res.job_id);
-      setWarnings(res.warnings || []);
-      setDownloadUrl(res.download_url || null);
-
-      track("format_success", {
-        job_id: res.job_id,
-        warnings: (res.warnings || []).length,
-        template,
-        options: safeOptions.join(","),
-      });
-    } catch (e: any) {
-      const msg = e?.message || "Upload failed. Check that the API is running.";
-      setError(msg);
-      track("format_error", { message: msg });
-    } finally {
-      setLoading(false);
+      // Small UX touch: pretend small “processing” before done
+      setStage("processing");
+      setTimeout(() => setStage("done"), 350);
+    } catch (err: any) {
+      // Normalize errors
+      const friendly = toFriendlyError(err, err?.body);
+      setError({ title: friendly.title, message: friendly.message, details: friendly.details });
+      setStage("error");
+      setProgress(0);
     }
   }
 
+  const reset = () => {
+    setFile(null);
+    setDownloadUrl(null);
+    setWarnings([]);
+    setProgress(0);
+    setError(null);
+    setStage("idle");
+  };
+
   return (
-    <div style={{ width: "100%" }}>
-      <div className="card">
-        <h1>Upload LaTeX Project</h1>
+    <div className="container" style={{ maxWidth: 880, margin: "0 auto", padding: "32px 16px" }}>
+      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 16 }}>Upload LaTeX Project</h1>
 
-        <div style={{ display: "grid", gap: 20 }}>
-          <div>
-            <label className="kv" style={{ display: "block", marginBottom: 6 }}>
-              Target template
-            </label>
-            <TemplateSelect value={template} onChange={setTemplate} />
+      {/* Template select */}
+      <div style={{ marginBottom: 16 }}>
+        <label htmlFor="tpl" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+          Target template
+        </label>
+        <select
+          id="tpl"
+          className="kv"
+          value={template}
+          onChange={(e) => setTemplate(e.target.value)}
+          style={{ width: "100%", padding: 10, borderRadius: 8, background: "#111", border: "1px solid #333" }}
+        >
+          {TEMPLATES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Options */}
+      <div style={{ display: "flex", gap: 24, alignItems: "center", marginBottom: 10 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={options.has("fix_citations")}
+            onChange={() => toggle("fix_citations")}
+          />
+          <span className="kv">Fix citations</span>
+        </label>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, opacity: 1 }}>
+          <input
+            type="checkbox"
+            checked={options.has("ai_grammar")}
+            onChange={() => toggle("ai_grammar")}
+          />
+          <span className="kv">AI grammar (abstract)</span>
+        </label>
+      </div>
+
+      {/* File chooser */}
+      <div
+        style={{
+          marginTop: 12,
+          padding: 16,
+          border: "1px dashed #333",
+          borderRadius: 12,
+          background: "#0a0a0a",
+        }}
+      >
+        <p className="kv" style={{ marginBottom: 8 }}>
+          Choose your LaTeX project (.zip) or a single .tex file.
+        </p>
+        <input
+          type="file"
+          accept=".zip,.tex"
+          onChange={(e) => onFile(e.target.files?.[0] || null)}
+        />
+        {file && (
+          <div className="kv" style={{ marginTop: 10, opacity: 0.8 }}>
+            Selected: <strong>{file.name}</strong>
           </div>
+        )}
+      </div>
 
-          <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
-            <label>
-              <input
-                type="checkbox"
-                checked={options.includes("fix_citations")}
-                onChange={() => toggle("fix_citations")}
-              />
-              <span className="kv" style={{ marginLeft: 8 }}>Fix citations</span>
-            </label>
-
-            {AI_ENABLED && (
-              <label>
-                <input
-                  type="checkbox"
-                  checked={options.includes("ai_grammar")}
-                  onChange={() => toggle("ai_grammar")}
-                />
-                <span className="kv" style={{ marginLeft: 8 }}>
-                  AI grammar (abstract)
-                </span>
-              </label>
-            )}
+      {/* Progress bar */}
+      {stage === "uploading" && (
+        <div style={{ marginTop: 16 }}>
+          <div className="kv" style={{ marginBottom: 6 }}>
+            Uploading… {progress}%
           </div>
-
-          <FileDrop onFile={setFile} />
-
-          <div className="kv">
-            Upload a <code>.zip</code> (project) or a single <code>.tex</code>
+          <div
+            style={{
+              width: "100%",
+              height: 10,
+              background: "#1e1e1e",
+              borderRadius: 8,
+              overflow: "hidden",
+              boxShadow: "inset 0 0 0 1px #262626",
+            }}
+          >
+            <div
+              style={{
+                width: `${progress}%`,
+                height: "100%",
+                background: "linear-gradient(90deg,#6ee7b7,#3b82f6)",
+                transition: "width .15s ease",
+              }}
+            />
           </div>
+        </div>
+      )}
 
-          <div>
-            <button className="btn" onClick={onSubmit} disabled={loading}>
-              {loading ? <span className="spinner" aria-hidden /> : null}
-              {loading ? "Formatting…" : "Format"}
-            </button>
-          </div>
+      {/* Processing micro-state */}
+      {stage === "processing" && (
+        <div className="kv" style={{ marginTop: 16, opacity: 0.9 }}>
+          Processing… almost there.
+        </div>
+      )}
 
-          {error && <div className="alert alert-err">{error}</div>}
-
-          {warnings.length > 0 && (
-            <div className="alert alert-warn">
-              <strong>Warnings</strong>
-              <ul style={{ margin: "6px 0 0 18px" }}>
-                {warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {downloadUrl && (
-            <div className="card" style={{ background: "transparent", borderColor: "#2c333a" }}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>
-                Your formatted project is ready
-              </div>
-              <div className="kv" style={{ marginBottom: 10 }}>Job ID: {jobId}</div>
-              <a
-                href={downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn"
-                aria-label="Download formatted ZIP"
-                onClick={() => track("download_click", { job_id: jobId })}
-              >
-                Download ZIP
-              </a>
+      {/* Error alert */}
+      {stage === "error" && error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 16,
+            padding: "12px 14px",
+            borderRadius: 12,
+            background: "#2a1313",
+            color: "#fca5a5",
+            border: "1px solid #7f1d1d",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{error.title}</div>
+          <div>{error.message}</div>
+          {error.details && (
+            <div className="kv" style={{ marginTop: 6, opacity: 0.8 }}>
+              {error.details}
             </div>
           )}
         </div>
+      )}
+
+      {/* Warnings (non-blocking) */}
+      {warnings.length > 0 && stage === "done" && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: "12px 14px",
+            borderRadius: 12,
+            background: "#1d2433",
+            color: "#93c5fd",
+            border: "1px solid #1e3a8a",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Warnings</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {warnings.map((w, i) => (
+              <li key={i} className="kv">
+                {w}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Success state */}
+      {stage === "done" && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: 16,
+            borderRadius: 12,
+            background: "#0f1f17",
+            border: "1px solid #14532d",
+          }}
+        >
+          <div className="kv" style={{ marginBottom: 12 }}>
+            ✅ Your formatted project is ready.
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {downloadUrl && (
+              <a
+                className="btn"
+                href={downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  display: "inline-flex",
+                  gap: 8,
+                  alignItems: "center",
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background:
+                    "linear-gradient(90deg,rgba(34,197,94,0.9),rgba(59,130,246,0.9))",
+                  color: "white",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+              >
+                Download ZIP
+              </a>
+            )}
+            <button
+              className="btn"
+              onClick={reset}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "#1f2937",
+                color: "#e5e7eb",
+                fontWeight: 600,
+                border: "1px solid #374151",
+              }}
+            >
+              Format another
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Submit */}
+      <div style={{ marginTop: 18 }}>
+        <button
+          className="btn"
+          onClick={onSubmit}
+          disabled={stage === "uploading" || !file}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: !file ? "#2a2a2a" : "#2563eb",
+            color: "white",
+            fontWeight: 700,
+            opacity: stage === "uploading" ? 0.7 : 1,
+            cursor: stage === "uploading" ? "not-allowed" : "pointer",
+          }}
+        >
+          {stage === "uploading" ? `Uploading… ${progress}%` : "Format"}
+        </button>
       </div>
+
+      {/* Tiny style baseline */}
+      <style jsx global>{`
+        .kv {
+          color: #d4d4d8;
+        }
+        .btn:focus {
+          outline: 2px solid #60a5fa;
+          outline-offset: 2px;
+        }
+        select,
+        input[type="file"] {
+          color: #e5e7eb;
+        }
+        input[type="checkbox"] {
+          transform: translateY(1px);
+        }
+      `}</style>
     </div>
   );
 }
