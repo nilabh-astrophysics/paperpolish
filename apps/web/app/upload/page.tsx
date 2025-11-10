@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import { API_BASE, uploadArchiveXHR, toFriendlyError, buildDownloadUrl } from "@/lib/api";
+import { API_BASE, uploadArchiveXHR, toFriendlyError, buildDownloadUrl } from "../../lib/api";
 
 type OptionKey = "fix_citations" | "ai_grammar";
 
