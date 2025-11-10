@@ -6,9 +6,11 @@ import {
   uploadArchiveXHR,
   toFriendlyError,
   buildDownloadUrl,
-} from "../../lib/api"; // 👈 use relative import (for Vercel)
+  type FormatResponse,
+} from "../../lib/api";
 
 type OptionKey = "fix_citations" | "ai_grammar";
+type Stage = "idle" | "uploading" | "processing" | "done" | "error";
 
 const TEMPLATES = [
   { value: "aastex", label: "AAS Journals (aastex)" },
@@ -18,28 +20,20 @@ const TEMPLATES = [
 
 export default function UploadPage() {
   const [template, setTemplate] = React.useState<string>(TEMPLATES[0].value);
-
-  // ✅ Properly typed Set<OptionKey> initialization
   const [options, setOptions] = React.useState<Set<OptionKey>>(
     () => new Set<OptionKey>(["fix_citations"])
   );
-
   const [file, setFile] = React.useState<File | null>(null);
-  const [stage, setStage] = React.useState<
-    "idle" | "uploading" | "processing" | "done" | "error"
-  >("idle");
+
+  const [stage, setStage] = React.useState<Stage>("idle");
   const [progress, setProgress] = React.useState<number>(0);
-  const [error, setError] = React.useState<{
-    title: string;
-    message: string;
-    details?: string;
-  } | null>(null);
+  const [error, setError] = React.useState<{ title: string; message: string; details?: string } | null>(null);
   const [downloadUrl, setDownloadUrl] = React.useState<string | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
 
   const abortRef = React.useRef<AbortController | null>(null);
 
-  // --- Handlers -----------------------------------------------------
+  // ────────────────────────── Handlers ──────────────────────────
 
   const toggle = (key: OptionKey) => {
     setOptions((curr) => {
@@ -63,10 +57,7 @@ export default function UploadPage() {
     e.preventDefault();
 
     if (!file) {
-      setError({
-        title: "No file selected",
-        message: "Please choose a .zip project or a single .tex file.",
-      });
+      setError({ title: "No file selected", message: "Please choose a .zip project or a .tex file." });
       return;
     }
 
@@ -77,44 +68,45 @@ export default function UploadPage() {
     const form = new FormData();
     form.append("archive", file);
     form.append("template", template);
-    form.append("options", Array.from(options).join(",")); // send options
+    form.append("options", Array.from(options).join(",")); // comma-separated
 
-    // Cancel any previous upload
+    // cancel any previous run
     abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const endpoint = `${API_BASE}/format`;
-      const res = await uploadArchiveXHR(
+      const res = await uploadArchiveXHR<FormatResponse>(
         endpoint,
         form,
         (pct) => setProgress(pct),
-        abortRef.current.signal
+        controller.signal
       );
 
       const url = buildDownloadUrl(res);
       setDownloadUrl(url);
+
       const warn =
-        (Array.isArray(res.warnings)
-          ? res.warnings
-          : res.warnings
-          ? [res.warnings]
-          : []) as string[];
+        (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
       setWarnings(warn);
 
       setStage("processing");
       setTimeout(() => setStage("done"), 350);
     } catch (err: any) {
       const friendly = toFriendlyError(err, err?.body);
-      setError({
-        title: friendly.title,
-        message: friendly.message,
-        details: friendly.details,
-      });
+      setError({ title: friendly.title, message: friendly.message, details: friendly.details });
       setStage("error");
       setProgress(0);
     }
   }
+
+  const cancelUpload = () => {
+    if (stage === "uploading") {
+      abortRef.current?.abort();
+      // UI will be updated by error handler via AbortError → toFriendlyError
+    }
+  };
 
   const reset = () => {
     setFile(null);
@@ -125,38 +117,16 @@ export default function UploadPage() {
     setStage("idle");
   };
 
-  // --- UI -----------------------------------------------------------
+  // ───────────────────────────── UI ─────────────────────────────
 
   return (
-    <div
-      className="container"
-      style={{ maxWidth: 880, margin: "0 auto", padding: "32px 16px" }}
-    >
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 16 }}>
-        Upload LaTeX Project
-      </h1>
+    <div className="wrap">
+      <h1>Upload LaTeX Project</h1>
 
-      {/* Template selector */}
-      <div style={{ marginBottom: 16 }}>
-        <label
-          htmlFor="tpl"
-          style={{ display: "block", fontWeight: 600, marginBottom: 6 }}
-        >
-          Target template
-        </label>
-        <select
-          id="tpl"
-          className="kv"
-          value={template}
-          onChange={(e) => setTemplate(e.target.value)}
-          style={{
-            width: "100%",
-            padding: 10,
-            borderRadius: 8,
-            background: "#111",
-            border: "1px solid #333",
-          }}
-        >
+      {/* Template */}
+      <div className="field">
+        <label htmlFor="tpl">Target template</label>
+        <select id="tpl" value={template} onChange={(e) => setTemplate(e.target.value)}>
           {TEMPLATES.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
@@ -166,127 +136,73 @@ export default function UploadPage() {
       </div>
 
       {/* Options */}
-      <div style={{ display: "flex", gap: 24, alignItems: "center", marginBottom: 10 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="row">
+        <label className="check">
           <input
             type="checkbox"
             checked={options.has("fix_citations")}
             onChange={() => toggle("fix_citations")}
           />
-          <span className="kv">Fix citations</span>
+          <span>Fix citations</span>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label className="check">
           <input
             type="checkbox"
             checked={options.has("ai_grammar")}
             onChange={() => toggle("ai_grammar")}
           />
-          <span className="kv">AI grammar (abstract)</span>
+          <span>AI grammar (abstract)</span>
         </label>
       </div>
 
       {/* File input */}
-      <div
-        style={{
-          marginTop: 12,
-          padding: 16,
-          border: "1px dashed #333",
-          borderRadius: 12,
-          background: "#0a0a0a",
-        }}
-      >
-        <p className="kv" style={{ marginBottom: 8 }}>
-          Choose your LaTeX project (.zip) or a single .tex file.
-        </p>
-        <input
-          type="file"
-          accept=".zip,.tex"
-          onChange={(e) => onFile(e.target.files?.[0] || null)}
-        />
+      <div className="drop">
+        <p>Choose your LaTeX project (.zip) or a single .tex file.</p>
+        <input type="file" accept=".zip,.tex" onChange={(e) => onFile(e.target.files?.[0] || null)} />
         {file && (
-          <div className="kv" style={{ marginTop: 10, opacity: 0.8 }}>
-            Selected: <strong>{file.name}</strong>
+          <div className="note">
+            Selected: <b>{file.name}</b>
           </div>
         )}
       </div>
 
-      {/* Progress bar */}
+      {/* Progress w/ animation + cancel */}
       {stage === "uploading" && (
-        <div style={{ marginTop: 16 }}>
-          <div className="kv" style={{ marginBottom: 6 }}>
-            Uploading… {progress}%
+        <div className="progressWrap" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+          <div className="progressBar">
+            <div className="bar" style={{ width: `${progress}%` }}>
+              <div className="stripes" />
+            </div>
           </div>
-          <div
-            style={{
-              width: "100%",
-              height: 10,
-              background: "#1e1e1e",
-              borderRadius: 8,
-              overflow: "hidden",
-              boxShadow: "inset 0 0 0 1px #262626",
-            }}
-          >
-            <div
-              style={{
-                width: `${progress}%`,
-                height: "100%",
-                background: "linear-gradient(90deg,#6ee7b7,#3b82f6)",
-                transition: "width .15s ease",
-              }}
-            />
+          <div className="progressMeta">
+            <span>Uploading… {progress}%</span>
+            <button className="ghost" onClick={cancelUpload} type="button" aria-label="Cancel upload">
+              Cancel
+            </button>
           </div>
         </div>
       )}
 
       {/* Processing */}
-      {stage === "processing" && (
-        <div className="kv" style={{ marginTop: 16, opacity: 0.9 }}>
-          Processing… almost there.
-        </div>
-      )}
+      {stage === "processing" && <div className="subtle">Processing… almost there.</div>}
 
-      {/* Error state */}
+      {/* Error */}
       {stage === "error" && error && (
-        <div
-          role="alert"
-          style={{
-            marginTop: 16,
-            padding: "12px 14px",
-            borderRadius: 12,
-            background: "#2a1313",
-            color: "#fca5a5",
-            border: "1px solid #7f1d1d",
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{error.title}</div>
+        <div className="alert error" role="alert">
+          <div className="title">{error.title}</div>
           <div>{error.message}</div>
-          {error.details && (
-            <div className="kv" style={{ marginTop: 6, opacity: 0.8 }}>
-              {error.details}
-            </div>
-          )}
+          {error.details && <pre className="details">{error.details}</pre>}
         </div>
       )}
 
       {/* Warnings */}
       {warnings.length > 0 && stage === "done" && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: "12px 14px",
-            borderRadius: 12,
-            background: "#1d2433",
-            color: "#93c5fd",
-            border: "1px solid #1e3a8a",
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Warnings</div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <div className="alert warn">
+          <div className="title">Warnings</div>
+          <ul>
             {warnings.map((w, i) => (
-              <li key={i} className="kv">
-                {w}
-              </li>
+              <li key={i}>{w}</li>
             ))}
           </ul>
         </div>
@@ -294,96 +210,201 @@ export default function UploadPage() {
 
       {/* Success */}
       {stage === "done" && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 16,
-            borderRadius: 12,
-            background: "#0f1f17",
-            border: "1px solid #14532d",
-          }}
-        >
-          <div className="kv" style={{ marginBottom: 12 }}>
-            ✅ Your formatted project is ready.
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div className="success">
+          <div>✅ Your formatted project is ready.</div>
+          <div className="row">
             {downloadUrl && (
-              <a
-                className="btn"
-                href={downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: "inline-flex",
-                  gap: 8,
-                  alignItems: "center",
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background:
-                    "linear-gradient(90deg,rgba(34,197,94,0.9),rgba(59,130,246,0.9))",
-                  color: "white",
-                  textDecoration: "none",
-                  fontWeight: 600,
-                }}
-              >
+              <a className="btn" href={downloadUrl} target="_blank" rel="noreferrer">
                 Download ZIP
               </a>
             )}
-            <button
-              className="btn"
-              onClick={reset}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                background: "#1f2937",
-                color: "#e5e7eb",
-                fontWeight: 600,
-                border: "1px solid #374151",
-              }}
-            >
+            <button className="ghost" onClick={reset} type="button">
               Format another
             </button>
           </div>
         </div>
       )}
 
-      {/* Submit button */}
-      <div style={{ marginTop: 18 }}>
-        <button
-          className="btn"
-          onClick={onSubmit}
-          disabled={stage === "uploading" || !file}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: !file ? "#2a2a2a" : "#2563eb",
-            color: "white",
-            fontWeight: 700,
-            opacity: stage === "uploading" ? 0.7 : 1,
-            cursor: stage === "uploading" ? "not-allowed" : "pointer",
-          }}
-        >
+      {/* Submit */}
+      <div className="actions">
+        <button className="btn" onClick={onSubmit} disabled={stage === "uploading" || !file}>
           {stage === "uploading" ? `Uploading… ${progress}%` : "Format"}
         </button>
       </div>
 
-      <style jsx global>{`
-        .kv {
+      {/* Styles */}
+      <style jsx>{`
+        .wrap {
+          max-width: 880px;
+          margin: 0 auto;
+          padding: 32px 16px;
+        }
+        h1 {
+          font-size: 28px;
+          font-weight: 800;
+          margin: 0 0 16px;
+        }
+        .field {
+          margin: 0 0 16px;
+        }
+        label {
+          font-weight: 600;
+          display: block;
+          margin: 0 0 6px;
+        }
+        select {
+          width: 100%;
+          padding: 10px;
+          border-radius: 10px;
+          background: #0c0c0c;
+          color: #e6e6e6;
+          border: 1px solid #2a2a2a;
+        }
+        .row {
+          display: flex;
+          gap: 24px;
+          align-items: center;
+          margin: 8px 0 6px;
+          flex-wrap: wrap;
+        }
+        .check {
+          display: inline-flex;
+          gap: 8px;
+          align-items: center;
           color: #d4d4d8;
         }
-        .btn:focus {
-          outline: 2px solid #60a5fa;
-          outline-offset: 2px;
+        .drop {
+          margin: 12px 0 0;
+          padding: 16px;
+          border: 1px dashed #333;
+          border-radius: 12px;
+          background: #0a0a0a;
         }
-        select,
-        input[type="file"] {
+        .note {
+          margin-top: 10px;
+          opacity: 0.85;
+          color: #d4d4d8;
+        }
+        .progressWrap {
+          margin-top: 16px;
+        }
+        .progressBar {
+          width: 100%;
+          height: 12px;
+          background: #151515;
+          border-radius: 999px;
+          overflow: hidden;
+          box-shadow: inset 0 0 0 1px #262626;
+        }
+        .bar {
+          height: 100%;
+          position: relative;
+          background: linear-gradient(90deg, #4ade80, #60a5fa);
+          transition: width 120ms ease;
+        }
+        .stripes {
+          position: absolute;
+          inset: 0;
+          background-image: linear-gradient(
+            45deg,
+            rgba(255, 255, 255, 0.18) 25%,
+            transparent 25%,
+            transparent 50%,
+            rgba(255, 255, 255, 0.18) 50%,
+            rgba(255, 255, 255, 0.18) 75%,
+            transparent 75%,
+            transparent
+          );
+          background-size: 22px 22px;
+          animation: move 0.8s linear infinite;
+          opacity: 0.6;
+        }
+        @keyframes move {
+          from {
+            background-position: 0 0;
+          }
+          to {
+            background-position: 22px 0;
+          }
+        }
+        .progressMeta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-top: 8px;
+          color: #d4d4d8;
+        }
+        .subtle {
+          margin-top: 16px;
+          opacity: 0.9;
+          color: #d4d4d8;
+        }
+        .alert {
+          margin-top: 16px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          border: 1px solid;
+        }
+        .alert.error {
+          background: #2a1313;
+          color: #fca5a5;
+          border-color: #7f1d1d;
+        }
+        .alert.warn {
+          background: #1d2433;
+          color: #93c5fd;
+          border-color: #1e3a8a;
+        }
+        .alert .title {
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+        .details {
+          margin-top: 8px;
+          white-space: pre-wrap;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+            "Courier New", monospace;
+          font-size: 12px;
+          opacity: 0.85;
+        }
+        .success {
+          margin-top: 16px;
+          padding: 16px;
+          border-radius: 12px;
+          background: #0f1f17;
+          border: 1px solid #14532d;
+          color: #d4d4d8;
+        }
+        .actions {
+          margin-top: 18px;
+        }
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 10px;
+          background: #2563eb;
+          color: #fff;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+        }
+        .btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+        .ghost {
+          padding: 9px 12px;
+          border-radius: 10px;
+          background: #1f2937;
           color: #e5e7eb;
-        }
-        input[type="checkbox"] {
-          transform: translateY(1px);
+          font-weight: 600;
+          border: 1px solid #374151;
+          cursor: pointer;
         }
       `}</style>
     </div>
   );
 }
-
