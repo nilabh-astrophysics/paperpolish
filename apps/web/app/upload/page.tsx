@@ -1,8 +1,12 @@
-// apps/web/app/upload/page.tsx
 "use client";
 
 import React from "react";
-import { API_BASE, uploadArchiveXHR, toFriendlyError, buildDownloadUrl } from "../../lib/api";
+import {
+  API_BASE,
+  uploadArchiveXHR,
+  toFriendlyError,
+  buildDownloadUrl,
+} from "../../lib/api"; // 👈 use relative import (for Vercel)
 
 type OptionKey = "fix_citations" | "ai_grammar";
 
@@ -14,22 +18,34 @@ const TEMPLATES = [
 
 export default function UploadPage() {
   const [template, setTemplate] = React.useState<string>(TEMPLATES[0].value);
-  const [options, setOptions] = React.useState<Set<OptionKey>>(new Set(["fix_citations"]));
-  const [file, setFile] = React.useState<File | null>(null);
 
-  const [stage, setStage] = React.useState<"idle" | "uploading" | "processing" | "done" | "error">("idle");
+  // ✅ Properly typed Set<OptionKey> initialization
+  const [options, setOptions] = React.useState<Set<OptionKey>>(
+    () => new Set<OptionKey>(["fix_citations"])
+  );
+
+  const [file, setFile] = React.useState<File | null>(null);
+  const [stage, setStage] = React.useState<
+    "idle" | "uploading" | "processing" | "done" | "error"
+  >("idle");
   const [progress, setProgress] = React.useState<number>(0);
-  const [error, setError] = React.useState<{ title: string; message: string; details?: string } | null>(null);
+  const [error, setError] = React.useState<{
+    title: string;
+    message: string;
+    details?: string;
+  } | null>(null);
   const [downloadUrl, setDownloadUrl] = React.useState<string | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
 
   const abortRef = React.useRef<AbortController | null>(null);
 
-  const toggle = (k: OptionKey) => {
-    setOptions((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
+  // --- Handlers -----------------------------------------------------
+
+  const toggle = (key: OptionKey) => {
+    setOptions((curr) => {
+      const next = new Set<OptionKey>(curr);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -61,31 +77,40 @@ export default function UploadPage() {
     const form = new FormData();
     form.append("archive", file);
     form.append("template", template);
-    // Backend expects comma-separated options
-    form.append("options", Array.from(options).join(","));
+    form.append("options", Array.from(options).join(",")); // send options
 
-    // Abort control for cancel (optional future button)
+    // Cancel any previous upload
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
     try {
       const endpoint = `${API_BASE}/format`;
-      const res = await uploadArchiveXHR(endpoint, form, (pct) => setProgress(pct), abortRef.current.signal);
+      const res = await uploadArchiveXHR(
+        endpoint,
+        form,
+        (pct) => setProgress(pct),
+        abortRef.current.signal
+      );
 
-      // Success → compute download URL + gather warnings
       const url = buildDownloadUrl(res);
       setDownloadUrl(url);
       const warn =
-        (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
+        (Array.isArray(res.warnings)
+          ? res.warnings
+          : res.warnings
+          ? [res.warnings]
+          : []) as string[];
       setWarnings(warn);
 
-      // Small UX touch: pretend small “processing” before done
       setStage("processing");
       setTimeout(() => setStage("done"), 350);
     } catch (err: any) {
-      // Normalize errors
       const friendly = toFriendlyError(err, err?.body);
-      setError({ title: friendly.title, message: friendly.message, details: friendly.details });
+      setError({
+        title: friendly.title,
+        message: friendly.message,
+        details: friendly.details,
+      });
       setStage("error");
       setProgress(0);
     }
@@ -100,13 +125,23 @@ export default function UploadPage() {
     setStage("idle");
   };
 
-  return (
-    <div className="container" style={{ maxWidth: 880, margin: "0 auto", padding: "32px 16px" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 16 }}>Upload LaTeX Project</h1>
+  // --- UI -----------------------------------------------------------
 
-      {/* Template select */}
+  return (
+    <div
+      className="container"
+      style={{ maxWidth: 880, margin: "0 auto", padding: "32px 16px" }}
+    >
+      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 16 }}>
+        Upload LaTeX Project
+      </h1>
+
+      {/* Template selector */}
       <div style={{ marginBottom: 16 }}>
-        <label htmlFor="tpl" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
+        <label
+          htmlFor="tpl"
+          style={{ display: "block", fontWeight: 600, marginBottom: 6 }}
+        >
           Target template
         </label>
         <select
@@ -114,7 +149,13 @@ export default function UploadPage() {
           className="kv"
           value={template}
           onChange={(e) => setTemplate(e.target.value)}
-          style={{ width: "100%", padding: 10, borderRadius: 8, background: "#111", border: "1px solid #333" }}
+          style={{
+            width: "100%",
+            padding: 10,
+            borderRadius: 8,
+            background: "#111",
+            border: "1px solid #333",
+          }}
         >
           {TEMPLATES.map((t) => (
             <option key={t.value} value={t.value}>
@@ -135,7 +176,7 @@ export default function UploadPage() {
           <span className="kv">Fix citations</span>
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, opacity: 1 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
             type="checkbox"
             checked={options.has("ai_grammar")}
@@ -145,7 +186,7 @@ export default function UploadPage() {
         </label>
       </div>
 
-      {/* File chooser */}
+      {/* File input */}
       <div
         style={{
           marginTop: 12,
@@ -198,14 +239,14 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Processing micro-state */}
+      {/* Processing */}
       {stage === "processing" && (
         <div className="kv" style={{ marginTop: 16, opacity: 0.9 }}>
           Processing… almost there.
         </div>
       )}
 
-      {/* Error alert */}
+      {/* Error state */}
       {stage === "error" && error && (
         <div
           role="alert"
@@ -228,7 +269,7 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Warnings (non-blocking) */}
+      {/* Warnings */}
       {warnings.length > 0 && stage === "done" && (
         <div
           style={{
@@ -251,7 +292,7 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Success state */}
+      {/* Success */}
       {stage === "done" && (
         <div
           style={{
@@ -306,7 +347,7 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Submit */}
+      {/* Submit button */}
       <div style={{ marginTop: 18 }}>
         <button
           className="btn"
@@ -326,7 +367,6 @@ export default function UploadPage() {
         </button>
       </div>
 
-      {/* Tiny style baseline */}
       <style jsx global>{`
         .kv {
           color: #d4d4d8;
@@ -346,3 +386,4 @@ export default function UploadPage() {
     </div>
   );
 }
+
