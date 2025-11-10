@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import FileDrop from "../../components/FileDrop";
 import {
   API_BASE,
   uploadArchiveXHR,
@@ -8,6 +9,7 @@ import {
   buildDownloadUrl,
   type FormatResponse,
 } from "../../lib/api";
+import { addJob } from "../../lib/history";
 
 type OptionKey = "fix_citations" | "ai_grammar";
 type Stage = "idle" | "uploading" | "processing" | "done" | "error";
@@ -30,10 +32,7 @@ export default function UploadPage() {
   const [error, setError] = React.useState<{ title: string; message: string; details?: string } | null>(null);
   const [downloadUrl, setDownloadUrl] = React.useState<string | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
-
   const abortRef = React.useRef<AbortController | null>(null);
-
-  // ────────────────────────── Handlers ──────────────────────────
 
   const toggle = (key: OptionKey) => {
     setOptions((curr) => {
@@ -68,9 +67,8 @@ export default function UploadPage() {
     const form = new FormData();
     form.append("archive", file);
     form.append("template", template);
-    form.append("options", Array.from(options).join(",")); // comma-separated
+    form.append("options", Array.from(options).join(","));
 
-    // cancel any previous run
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -91,6 +89,18 @@ export default function UploadPage() {
         (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
       setWarnings(warn);
 
+      // Save to history (for dashboard)
+      addJob({
+        id: res.job_id,
+        template,
+        options: Array.from(options),
+        createdAt: Date.now(),
+        filename: file.name,
+        size: file.size,
+        warnings: warn,
+        downloadUrl: url,
+      });
+
       setStage("processing");
       setTimeout(() => setStage("done"), 350);
     } catch (err: any) {
@@ -102,10 +112,7 @@ export default function UploadPage() {
   }
 
   const cancelUpload = () => {
-    if (stage === "uploading") {
-      abortRef.current?.abort();
-      // UI will be updated by error handler via AbortError → toFriendlyError
-    }
+    if (stage === "uploading") abortRef.current?.abort();
   };
 
   const reset = () => {
@@ -116,8 +123,6 @@ export default function UploadPage() {
     setError(null);
     setStage("idle");
   };
-
-  // ───────────────────────────── UI ─────────────────────────────
 
   return (
     <div className="wrap">
@@ -156,18 +161,15 @@ export default function UploadPage() {
         </label>
       </div>
 
-      {/* File input */}
-      <div className="drop">
-        <p>Choose your LaTeX project (.zip) or a single .tex file.</p>
-        <input type="file" accept=".zip,.tex" onChange={(e) => onFile(e.target.files?.[0] || null)} />
-        {file && (
-          <div className="note">
-            Selected: <b>{file.name}</b>
-          </div>
-        )}
-      </div>
+      {/* Drag-and-drop */}
+      <FileDrop
+        onFile={onFile}
+        accept=".zip,.tex"
+        label="Upload a .zip (project) or a single .tex"
+        note={file ? `Selected: ${file.name}` : "Drag & drop here, or choose a file."}
+      />
 
-      {/* Progress w/ animation + cancel */}
+      {/* Progress + cancel */}
       {stage === "uploading" && (
         <div className="progressWrap" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
           <div className="progressBar">
@@ -184,10 +186,8 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Processing */}
       {stage === "processing" && <div className="subtle">Processing… almost there.</div>}
 
-      {/* Error */}
       {stage === "error" && error && (
         <div className="alert error" role="alert">
           <div className="title">{error.title}</div>
@@ -196,7 +196,6 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Warnings */}
       {warnings.length > 0 && stage === "done" && (
         <div className="alert warn">
           <div className="title">Warnings</div>
@@ -208,11 +207,10 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Success */}
       {stage === "done" && (
         <div className="success">
           <div>✅ Your formatted project is ready.</div>
-          <div className="row">
+          <div className="rowBtns">
             {downloadUrl && (
               <a className="btn" href={downloadUrl} target="_blank" rel="noreferrer">
                 Download ZIP
@@ -232,178 +230,42 @@ export default function UploadPage() {
         </button>
       </div>
 
-      {/* Styles */}
       <style jsx>{`
-        .wrap {
-          max-width: 880px;
-          margin: 0 auto;
-          padding: 32px 16px;
-        }
-        h1 {
-          font-size: 28px;
-          font-weight: 800;
-          margin: 0 0 16px;
-        }
-        .field {
-          margin: 0 0 16px;
-        }
-        label {
-          font-weight: 600;
-          display: block;
-          margin: 0 0 6px;
-        }
+        .wrap { max-width: 880px; margin: 0 auto; padding: 32px 16px; }
+        h1 { font-size: 28px; font-weight: 800; margin: 0 0 16px; }
+        .field { margin: 0 0 16px; }
+        label { font-weight: 600; display: block; margin: 0 0 6px; }
         select {
-          width: 100%;
-          padding: 10px;
-          border-radius: 10px;
-          background: #0c0c0c;
-          color: #e6e6e6;
-          border: 1px solid #2a2a2a;
+          width: 100%; padding: 10px; border-radius: 10px;
+          background: #0c0c0c; color: #e6e6e6; border: 1px solid #2a2a2a;
         }
-        .row {
-          display: flex;
-          gap: 24px;
-          align-items: center;
-          margin: 8px 0 6px;
-          flex-wrap: wrap;
-        }
-        .check {
-          display: inline-flex;
-          gap: 8px;
-          align-items: center;
-          color: #d4d4d8;
-        }
-        .drop {
-          margin: 12px 0 0;
-          padding: 16px;
-          border: 1px dashed #333;
-          border-radius: 12px;
-          background: #0a0a0a;
-        }
-        .note {
-          margin-top: 10px;
-          opacity: 0.85;
-          color: #d4d4d8;
-        }
-        .progressWrap {
-          margin-top: 16px;
-        }
+        .row { display: flex; gap: 24px; align-items: center; margin: 8px 0 6px; flex-wrap: wrap; }
+        .check { display: inline-flex; gap: 8px; align-items: center; color: #d4d4d8; }
+        .progressWrap { margin-top: 16px; }
         .progressBar {
-          width: 100%;
-          height: 12px;
-          background: #151515;
-          border-radius: 999px;
-          overflow: hidden;
+          width: 100%; height: 12px; background: #151515; border-radius: 999px; overflow: hidden;
           box-shadow: inset 0 0 0 1px #262626;
         }
-        .bar {
-          height: 100%;
-          position: relative;
-          background: linear-gradient(90deg, #4ade80, #60a5fa);
-          transition: width 120ms ease;
-        }
+        .bar { height: 100%; position: relative; background: linear-gradient(90deg, #4ade80, #60a5fa); transition: width 120ms ease; }
         .stripes {
-          position: absolute;
-          inset: 0;
-          background-image: linear-gradient(
-            45deg,
-            rgba(255, 255, 255, 0.18) 25%,
-            transparent 25%,
-            transparent 50%,
-            rgba(255, 255, 255, 0.18) 50%,
-            rgba(255, 255, 255, 0.18) 75%,
-            transparent 75%,
-            transparent
-          );
-          background-size: 22px 22px;
-          animation: move 0.8s linear infinite;
-          opacity: 0.6;
+          position: absolute; inset: 0;
+          background-image: linear-gradient(45deg, rgba(255,255,255,.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.18) 75%, transparent 75%, transparent);
+          background-size: 22px 22px; animation: move .8s linear infinite; opacity: .6;
         }
-        @keyframes move {
-          from {
-            background-position: 0 0;
-          }
-          to {
-            background-position: 22px 0;
-          }
-        }
-        .progressMeta {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          margin-top: 8px;
-          color: #d4d4d8;
-        }
-        .subtle {
-          margin-top: 16px;
-          opacity: 0.9;
-          color: #d4d4d8;
-        }
-        .alert {
-          margin-top: 16px;
-          padding: 12px 14px;
-          border-radius: 12px;
-          border: 1px solid;
-        }
-        .alert.error {
-          background: #2a1313;
-          color: #fca5a5;
-          border-color: #7f1d1d;
-        }
-        .alert.warn {
-          background: #1d2433;
-          color: #93c5fd;
-          border-color: #1e3a8a;
-        }
-        .alert .title {
-          font-weight: 700;
-          margin-bottom: 6px;
-        }
-        .details {
-          margin-top: 8px;
-          white-space: pre-wrap;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
-            "Courier New", monospace;
-          font-size: 12px;
-          opacity: 0.85;
-        }
-        .success {
-          margin-top: 16px;
-          padding: 16px;
-          border-radius: 12px;
-          background: #0f1f17;
-          border: 1px solid #14532d;
-          color: #d4d4d8;
-        }
-        .actions {
-          margin-top: 18px;
-        }
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 14px;
-          border-radius: 10px;
-          background: #2563eb;
-          color: #fff;
-          font-weight: 700;
-          border: none;
-          cursor: pointer;
-        }
-        .btn:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-        }
-        .ghost {
-          padding: 9px 12px;
-          border-radius: 10px;
-          background: #1f2937;
-          color: #e5e7eb;
-          font-weight: 600;
-          border: 1px solid #374151;
-          cursor: pointer;
-        }
+        @keyframes move { from { background-position: 0 0; } to { background-position: 22px 0; } }
+        .progressMeta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; color: #d4d4d8; }
+        .subtle { margin-top: 16px; opacity: .9; color: #d4d4d8; }
+        .alert { margin-top: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid; }
+        .alert.error { background: #2a1313; color: #fca5a5; border-color: #7f1d1d; }
+        .alert.warn { background: #1d2433; color: #93c5fd; border-color: #1e3a8a; }
+        .alert .title { font-weight: 700; margin-bottom: 6px; }
+        .details { margin-top: 8px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size: 12px; opacity: .85; }
+        .success { margin-top: 16px; padding: 16px; border-radius: 12px; background: #0f1f17; border: 1px solid #14532d; color: #d4d4d8; }
+        .rowBtns { display: flex; gap: 10px; margin-top: 10px; }
+        .actions { margin-top: 18px; }
+        .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; background: #2563eb; color: #fff; font-weight: 700; border: none; cursor: pointer; }
+        .btn:disabled { opacity: .7; cursor: not-allowed; }
+        .ghost { padding: 9px 12px; border-radius: 10px; background: #1f2937; color: #e5e7eb; font-weight: 600; border: 1px solid #374151; cursor: pointer; }
       `}</style>
     </div>
   );
