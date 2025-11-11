@@ -10,34 +10,23 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  // Report the error to Sentry
   React.useEffect(() => {
     Sentry.captureException(error);
   }, [error]);
 
   return (
     <html>
-      <body className="min-h-screen grid place-items-center p-6">
-        <div style={{ maxWidth: 560 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 12 }}>
-            Something went wrong
-          </h1>
-          <p style={{ opacity: 0.8, marginBottom: 16 }}>
-            We’ve been notified and are looking into it.
-          </p>
-          <button
-            onClick={() => reset()}
-            style={{
-              padding: '8px 14px',
-              borderRadius: 8,
-              border: '1px solid #444',
-              background: 'transparent',
-              cursor: 'pointer',
-            }}
-          >
-            Try again
-          </button>
-        </div>
+      <body className="min-h-screen flex flex-col items-center justify-center text-center p-8">
+        <h1 className="text-2xl font-bold mb-4">Something went wrong</h1>
+        <p className="text-gray-500 mb-6">
+          We’ve been notified and are working on it.
+        </p>
+        <button
+          onClick={() => reset()}
+          className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700"
+        >
+          Try again
+        </button>
       </body>
     </html>
   );
