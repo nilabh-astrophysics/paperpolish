@@ -8,6 +8,7 @@ import {
   toFriendlyError,
   buildDownloadUrl,
   type FormatResponse,
+  createJob,           // NEW: backend job sync
 } from "../../lib/api";
 import { addJob } from "../../lib/history";
 
@@ -20,8 +21,8 @@ const TEMPLATES = [
   { value: "elsevier", label: "Elsevier (elsarticle)" },
 ];
 
+// Map common server statuses + friendlier text
 function humanize(err: any): { title: string; message: string; details?: string } {
-  // Map common server statuses
   const status = err?.status || err?.body?.status;
   if (status === 413) {
     return {
@@ -36,9 +37,13 @@ function humanize(err: any): { title: string; message: string; details?: string 
     };
   }
   const friendly = toFriendlyError(err, err?.body);
+  let hint = "";
+  if (String(friendly.message || "").toLowerCase().includes("cors")) {
+    hint = " (Tip: check ALLOW_ORIGINS on API and NEXT_PUBLIC_API_URL on the web app)";
+  }
   return {
     title: friendly.title,
-    message: friendly.message,
+    message: `${friendly.message}${hint}`,
     details: friendly.details,
   };
 }
@@ -119,7 +124,8 @@ export default function UploadPage() {
         (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
       setWarnings(warn);
 
-      addJob({
+      // Save to client history
+      const jobRecord = {
         id: res.job_id,
         template,
         options: Array.from(options),
@@ -128,7 +134,24 @@ export default function UploadPage() {
         size: file.size,
         warnings: warn,
         downloadUrl: url,
-      });
+      };
+      addJob(jobRecord);
+
+      // Also sync to backend (don’t block UX on failure)
+      try {
+        await createJob({
+          id: res.job_id,
+          template,
+          options: Array.from(options),
+          createdAt: jobRecord.createdAt,
+          filename: file.name,
+          size: file.size,
+          warnings: warn,
+          download_url: url,
+        });
+      } catch (syncErr) {
+        console.warn("Job sync to backend failed", syncErr);
+      }
 
       setStage("processing");
       setTimeout(() => setStage("done"), 350);
