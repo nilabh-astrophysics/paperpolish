@@ -1,147 +1,166 @@
 // apps/web/lib/api.ts
 
-// Read once and normalize (no trailing slash)
+// ====== Config ======
 export const API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000").replace(/\/$/, "");
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8000";
 
-export type OptionKey = "fix_citations" | "ai_grammar";
-
-export type FormatStage = "idle" | "uploading" | "processing" | "done" | "error";
-
+// ====== Types ======
 export type FormatResponse = {
   job_id: string;
   warnings?: string[] | string;
+  // optional extras your API may include
+  filename?: string;
+  status?: string;
 };
 
-export function buildDownloadUrl(res: FormatResponse): string {
-  // Backend provides a download endpoint: GET /download/{job_id}
-  return `${API_BASE}/download/${res.job_id}`;
+type UploadProgressFn = (percent: number) => void;
+
+// ====== Helpers ======
+export function buildDownloadUrl(res: Pick<FormatResponse, "job_id"> | { job_id: string }) {
+  const id = res.job_id;
+  return `${API_BASE}/download/${encodeURIComponent(id)}`;
 }
 
-/**
- * Upload using XHR so we can track progress and support AbortController.
- */
-export function uploadArchiveXHR<T extends Record<string, any>>(
-  url: string,
-  formData: FormData,
-  onProgress?: (pct: number) => void,
-  abortSignal?: AbortSignal
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
+export function toFriendlyError(err: any, body?: any): {
+  title: string;
+  message: string;
+  details?: string;
+  status?: number;
+} {
+  // Normalize response bodies that might be JSON or text
+  const status = err?.status ?? body?.status ?? err?.response?.status;
+  const detail =
+    body?.detail ??
+    body?.message ??
+    err?.response?.data?.detail ??
+    err?.message ??
+    "Unexpected error";
 
-    // Allow external cancellation
-    const onAbort = () => {
-      try {
-        xhr.abort();
-      } catch {}
-      reject(new DOMException("Upload aborted", "AbortError"));
-    };
-    if (abortSignal) {
-      if (abortSignal.aborted) return onAbort();
-      abortSignal.addEventListener("abort", onAbort, { once: true });
+  let title = "Request failed";
+  if (status && status >= 500) title = "Server error";
+  else if (status && status >= 400) title = "Request error";
+
+  // Specialized hints
+  let message = String(detail);
+  if (typeof detail !== "string") {
+    try {
+      message = JSON.stringify(detail);
+    } catch {
+      message = "Unexpected error";
     }
+  }
+
+  // Common front-end debugging hint
+  if (String(message).toLowerCase().includes("fetch") || status === 0) {
+    message += " (Check NEXT_PUBLIC_API_URL and your API CORS settings)";
+  }
+
+  return { title, message, details: typeof body === "string" ? body : undefined, status };
+}
+
+// XHR upload to allow granular progress updates and abort()
+export function uploadArchiveXHR<T = any>(
+  url: string,
+  form: FormData,
+  onProgress?: UploadProgressFn,
+  signal?: AbortSignal
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
 
     xhr.open("POST", url, true);
 
     xhr.upload.onprogress = (evt) => {
-      if (!onProgress) return;
-      if (evt.lengthComputable) {
-        const pct = Math.max(0, Math.min(100, Math.round((evt.loaded / evt.total) * 100)));
-        onProgress(pct);
-      }
+      if (!onProgress || !evt.lengthComputable) return;
+      const pct = Math.max(1, Math.min(99, Math.round((evt.loaded / evt.total) * 100)));
+      onProgress(pct);
     };
 
     xhr.onreadystatechange = () => {
-      if (xhr.readyState !== XMLHttpRequest.DONE) return;
-      // cleanup abort listener
-      if (abortSignal) abortSignal.removeEventListener("abort", onAbort);
+      if (xhr.readyState !== 4) return;
 
-      const contentType = xhr.getResponseHeader("content-type") || "";
-      const isJSON = contentType.includes("application/json");
+      const contentType = xhr.getResponseHeader("Content-Type") || "";
+      const status = xhr.status;
 
-      if (xhr.status >= 200 && xhr.status < 300) {
-        if (isJSON) {
-          try {
-            resolve(JSON.parse(xhr.responseText));
-            return;
-          } catch (e) {
-            reject(new Error("Invalid JSON from server."));
-            return;
-          }
+      let data: any = xhr.responseText;
+      if (contentType.includes("application/json")) {
+        try {
+          data = JSON.parse(xhr.responseText || "{}");
+        } catch {
+          // ignore
         }
-        // If server didn't return JSON, still resolve with a shell object
-        // (Not expected for this API, but keeps things resilient)
-        // @ts-expect-error – fallback shape
-        resolve({ ok: true, body: xhr.responseText });
+      }
+
+      if (status >= 200 && status < 300) {
+        // Force 100% on success
+        if (onProgress) onProgress(100);
+        resolve(data as T);
       } else {
-        let body: any = xhr.responseText;
-        if (isJSON) {
-          try {
-            body = JSON.parse(xhr.responseText);
-          } catch {}
-        }
-        const err: any = new Error(`HTTP ${xhr.status}`);
-        err.status = xhr.status;
-        err.body = body;
-        reject(err);
+        // Attach status + parsed body for nicer UI messages
+        const error: any = new Error(
+          data?.detail || data?.message || `Upload failed with status ${status}`
+        );
+        error.status = status;
+        error.body = data;
+        reject(error);
       }
     };
 
     xhr.onerror = () => {
-      const err: any = new Error("Network error");
-      err.status = 0;
-      reject(err);
+      const error: any = new Error("Network error");
+      error.status = 0;
+      reject(error);
     };
 
-    xhr.send(formData);
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        try {
+          xhr.abort();
+        } catch {}
+        const error: any = new Error("Upload aborted");
+        error.status = 0;
+        reject(error);
+      });
+    }
+
+    xhr.send(form);
   });
 }
 
-/**
- * Best-effort user-friendly error for FastAPI responses.
- */
-export function toFriendlyError(err: any, payload?: any): {
-  title: string;
-  message: string;
-  details?: string;
-} {
-  // Abort?
-  if (err?.name === "AbortError") {
-    return {
-      title: "Upload canceled",
-      message: "You canceled the upload.",
-    };
+// ====== Jobs API (backend persistence) ======
+export async function listJobs() {
+  const res = await fetch(`${API_BASE}/jobs`, { cache: "no-store" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw { status: res.status, message: "Jobs list failed", body: text };
   }
+  return res.json();
+}
 
-  // FastAPI standard error body: { detail: ... }
-  const detail = payload?.detail ?? err?.body?.detail;
-
-  if (typeof detail === "string") {
-    return { title: "Request failed", message: detail };
+export async function createJob(job: {
+  id: string;
+  createdAt: number;
+  filename?: string;
+  size?: number;
+  template: string;
+  options: string[];
+  warnings?: string[];
+  download_url: string;
+}) {
+  const res = await fetch(`${API_BASE}/jobs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(job),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw { status: res.status, message: "Job save failed", body };
   }
+  return res.json();
+}
 
-  if (Array.isArray(detail)) {
-    // Validation error array
-    const first = detail[0];
-    if (first?.msg) {
-      return { title: "Validation error", message: first.msg, details: JSON.stringify(detail) };
-    }
-  }
-
-  // OpenAI errors (when AI grammar used)
-  const maybeOpenAI = payload?.error?.message || err?.body?.error?.message;
-  if (maybeOpenAI) {
-    return { title: "AI service error", message: maybeOpenAI };
-  }
-
-  if (err?.status) {
-    return {
-      title: `Server error (${err.status})`,
-      message: "The server could not complete your request.",
-      details: typeof payload === "string" ? payload : JSON.stringify(payload || {}, null, 2),
-    };
-  }
-
-  return { title: "Network error", message: "Please check your connection and try again." };
+// (Optional) simple health check helper
+export async function health() {
+  const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+  return res.ok ? res.json() : { ok: false, status: res.status };
 }
