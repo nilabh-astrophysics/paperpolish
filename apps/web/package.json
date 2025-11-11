@@ -16,4 +16,13 @@
     "@types/react": "19.2.2",
     "typescript": "5.9.3"
   }
+{
+  "dependencies": {
+    "@sentry/nextjs": "^8.31.0"
+  },
+  "devDependencies": {
+    "@sentry/cli": "^2.31.2"
+  }
 }
+
+  
