@@ -4,30 +4,38 @@ export type JobRecord = {
   id: string;                // job_id from backend
   template: string;
   options: string[];         // ["fix_citations", "ai_grammar"]
-  createdAt: number;
+  createdAt: number;         // ms epoch
   filename?: string;
-  size?: number;
+  size?: number;             // in bytes
   warnings?: string[];
-  downloadUrl: string;
+  downloadUrl: string;       // built from API response
 };
 
 const KEY = "pp.jobs";
 
-function read(): JobRecord[] {
-  if (typeof window === "undefined") return [];
+function safeParse(raw: string | null): JobRecord[] {
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as JobRecord[]) : [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as JobRecord[];
+    return [];
   } catch {
     return [];
   }
+}
+
+function read(): JobRecord[] {
+  if (typeof window === "undefined") return [];
+  return safeParse(localStorage.getItem(KEY));
 }
 
 function write(list: JobRecord[]) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {}
+  } catch {
+    // ignore quota errors
+  }
 }
 
 export function addJob(rec: JobRecord) {
@@ -47,3 +55,4 @@ export function removeJob(id: string) {
 export function clearJobs() {
   write([]);
 }
+
