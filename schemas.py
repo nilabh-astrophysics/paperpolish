@@ -1,10 +1,12 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import List, Optional
 
-class FormatRequest(BaseModel):
+class JobRecord(BaseModel):
+    id: Optional[str]
+    createdAt: Optional[str]
+    filename: Optional[str]
     template: str
-    options: Optional[List[str]] = []
-
-class FormatResponse(BaseModel):
-    job_id: str
-    warnings: list
+    options: List[str]
+    warnings: Optional[List[str]]
+    downloadUrl: Optional[str]
+    size: Optional[int]
