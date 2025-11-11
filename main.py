@@ -16,6 +16,16 @@ except Exception:
     health_router = None
 
 try:
+    from jobs import router as jobs_router
+except Exception:
+    jobs_router = None
+
+# …
+
+if jobs_router:
+    app.include_router(jobs_router)
+
+try:
     from format import router as format_router
 except Exception:
     format_router = None
