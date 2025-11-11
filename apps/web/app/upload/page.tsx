@@ -20,6 +20,31 @@ const TEMPLATES = [
   { value: "elsevier", label: "Elsevier (elsarticle)" },
 ];
 
+// ——— helpers ———
+function humanizeError(err: any): { title: string; message: string; details?: string } {
+  const friendly = toFriendlyError(err, err?.body);
+  // Add a quick hint for common cases
+  let hint = "";
+  if (String(friendly.message || "").toLowerCase().includes("cros")) {
+    hint = " (Tip: check ALLOW_ORIGINS on your API and NEXT_PUBLIC_API_URL on the web app)";
+  } else if (friendly.title.startsWith("Server error")) {
+    hint = " (Tip: verify your Render service is healthy and responding to /format)";
+  }
+  return {
+    title: friendly.title,
+    message: `${friendly.message}${hint}`,
+    details: friendly.details,
+  };
+}
+
+function optionBadges(options: Set<OptionKey>) {
+  const labels: Record<OptionKey, string> = {
+    fix_citations: "Citations fixed",
+    ai_grammar: "AI grammar (abstract)",
+  };
+  return Array.from(options).map((k) => labels[k]);
+}
+
 export default function UploadPage() {
   const [template, setTemplate] = React.useState<string>(TEMPLATES[0].value);
   const [options, setOptions] = React.useState<Set<OptionKey>>(
@@ -89,7 +114,7 @@ export default function UploadPage() {
         (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
       setWarnings(warn);
 
-      // Save to history (for dashboard)
+      // Save to dashboard history (client-side)
       addJob({
         id: res.job_id,
         template,
@@ -104,8 +129,7 @@ export default function UploadPage() {
       setStage("processing");
       setTimeout(() => setStage("done"), 350);
     } catch (err: any) {
-      const friendly = toFriendlyError(err, err?.body);
-      setError({ title: friendly.title, message: friendly.message, details: friendly.details });
+      setError(humanizeError(err));
       setStage("error");
       setProgress(0);
     }
@@ -188,14 +212,20 @@ export default function UploadPage() {
 
       {stage === "processing" && <div className="subtle">Processing… almost there.</div>}
 
+      {/* Error */}
       {stage === "error" && error && (
         <div className="alert error" role="alert">
           <div className="title">{error.title}</div>
           <div>{error.message}</div>
           {error.details && <pre className="details">{error.details}</pre>}
+          <div className="rowBtns" style={{ marginTop: 10 }}>
+            <button className="ghost" onClick={reset} type="button">Try again</button>
+            <a className="ghost" href="/dashboard">Open dashboard</a>
+          </div>
         </div>
       )}
 
+      {/* Warnings */}
       {warnings.length > 0 && stage === "done" && (
         <div className="alert warn">
           <div className="title">Warnings</div>
@@ -207,15 +237,26 @@ export default function UploadPage() {
         </div>
       )}
 
+      {/* Success */}
       {stage === "done" && (
         <div className="success">
-          <div>✅ Your formatted project is ready.</div>
-          <div className="rowBtns">
+          <div className="kv" style={{ marginBottom: 10 }}>✅ Your formatted project is ready.</div>
+
+          {/* Badges for template & options */}
+          <div className="badges">
+            <span className="badge">{TEMPLATES.find(t => t.value === template)?.label || template}</span>
+            {optionBadges(options).map((b, i) => (
+              <span key={i} className="badge">{b}</span>
+            ))}
+          </div>
+
+          <div className="rowBtns" style={{ marginTop: 12 }}>
             {downloadUrl && (
               <a className="btn" href={downloadUrl} target="_blank" rel="noreferrer">
                 Download ZIP
               </a>
             )}
+            <a className="ghost" href="/dashboard">View in Dashboard</a>
             <button className="ghost" onClick={reset} type="button">
               Format another
             </button>
@@ -261,12 +302,21 @@ export default function UploadPage() {
         .alert .title { font-weight: 700; margin-bottom: 6px; }
         .details { margin-top: 8px; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size: 12px; opacity: .85; }
         .success { margin-top: 16px; padding: 16px; border-radius: 12px; background: #0f1f17; border: 1px solid #14532d; color: #d4d4d8; }
-        .rowBtns { display: flex; gap: 10px; margin-top: 10px; }
+        .rowBtns { display: flex; gap: 10px; flex-wrap: wrap; }
         .actions { margin-top: 18px; }
         .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 10px; background: #2563eb; color: #fff; font-weight: 700; border: none; cursor: pointer; }
         .btn:disabled { opacity: .7; cursor: not-allowed; }
         .ghost { padding: 9px 12px; border-radius: 10px; background: #1f2937; color: #e5e7eb; font-weight: 600; border: 1px solid #374151; cursor: pointer; }
+        .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+        .badge {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 6px 10px; border-radius: 999px; font-size: 12px;
+          background: #0b1f15; color: #a7f3d0; border: 1px solid #14532d;
+        }
+        .kv { color: #d4d4d8; }
       `}</style>
     </div>
   );
 }
+
+   
