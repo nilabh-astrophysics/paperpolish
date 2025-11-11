@@ -1,16 +1,42 @@
 "use client";
 
 import React from "react";
-import { listJobs, removeJob, clearJobs, type JobRecord } from "../../lib/history";
+import {
+  listJobs as localList,
+  removeJob,
+  clearJobs,
+  type JobRecord,
+} from "../../lib/history";
+import { listJobs as remoteList } from "../../lib/api";
 
 export default function DashboardPage() {
   const [rows, setRows] = React.useState<JobRecord[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => setRows(listJobs()), []);
+  React.useEffect(() => {
+    async function load() {
+      try {
+        // Try backend first
+        const remote = await remoteList();
+        setRows(remote);
+      } catch (err) {
+        console.warn("Remote /jobs failed, falling back to localStorage", err);
+        try {
+          setRows(localList());
+        } catch {
+          setError("Couldn't load jobs from either backend or local storage.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   const del = (id: string) => {
     removeJob(id);
-    setRows(listJobs());
+    setRows((prev) => prev.filter((r) => r.id !== id));
   };
 
   const clear = () => {
@@ -23,17 +49,26 @@ export default function DashboardPage() {
     <div className="wrap">
       <h1>Jobs & Downloads</h1>
 
-      {rows.length === 0 ? (
+      {loading && <div className="subtle">Loading jobs…</div>}
+      {error && <div className="alert error">{error}</div>}
+
+      {!loading && rows.length === 0 && (
         <div className="empty">
           No previous jobs yet. Upload a project on the{" "}
           <a href="/upload" className="link">Upload</a> page.
         </div>
-      ) : (
+      )}
+
+      {!loading && rows.length > 0 && (
         <>
           <div className="toolbar">
             <a className="ghost" href="/upload">New job</a>
-            <button className="ghost" onClick={() => setRows(listJobs())}>Refresh</button>
-            <button className="danger" onClick={clear}>Clear All</button>
+            <button className="ghost" onClick={() => window.location.reload()}>
+              Refresh
+            </button>
+            <button className="danger" onClick={clear}>
+              Clear Local
+            </button>
           </div>
 
           <div className="table">
@@ -59,14 +94,20 @@ export default function DashboardPage() {
                     <details>
                       <summary>{r.warnings.length} warning(s)</summary>
                       <ul>
-                        {r.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        {r.warnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
                       </ul>
                     </details>
                   ) : "—"}
                 </div>
                 <div className="actions">
-                  <a className="btn" href={r.downloadUrl} target="_blank" rel="noreferrer">Download</a>
-                  <button className="ghost" onClick={() => del(r.id)}>Remove</button>
+                  <a className="btn" href={r.downloadUrl} target="_blank" rel="noreferrer">
+                    Download
+                  </a>
+                  <button className="ghost" onClick={() => del(r.id)}>
+                    Remove
+                  </button>
                 </div>
               </div>
             ))}
@@ -101,6 +142,12 @@ export default function DashboardPage() {
         .danger {
           padding: 7px 10px; border-radius: 10px; background: #7f1d1d;
           color: #fde8e8; font-weight: 700; border: 1px solid #b91c1c; cursor: pointer;
+        }
+        .subtle { opacity: 0.8; margin-bottom: 12px; }
+        .alert.error {
+          background: #2a1313; color: #fca5a5;
+          border: 1px solid #7f1d1d; border-radius: 10px;
+          padding: 10px 14px; margin-top: 8px;
         }
       `}</style>
     </div>
