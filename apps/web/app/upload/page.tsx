@@ -20,19 +20,25 @@ const TEMPLATES = [
   { value: "elsevier", label: "Elsevier (elsarticle)" },
 ];
 
-// ——— helpers ———
-function humanizeError(err: any): { title: string; message: string; details?: string } {
-  const friendly = toFriendlyError(err, err?.body);
-  // Add a quick hint for common cases
-  let hint = "";
-  if (String(friendly.message || "").toLowerCase().includes("cros")) {
-    hint = " (Tip: check ALLOW_ORIGINS on your API and NEXT_PUBLIC_API_URL on the web app)";
-  } else if (friendly.title.startsWith("Server error")) {
-    hint = " (Tip: verify your Render service is healthy and responding to /format)";
+function humanize(err: any): { title: string; message: string; details?: string } {
+  // Map common server statuses
+  const status = err?.status || err?.body?.status;
+  if (status === 413) {
+    return {
+      title: "File too large",
+      message: "Max upload size is 25 MB. Please split the project or upload a smaller file.",
+    };
   }
+  if (status === 429) {
+    return {
+      title: "Too many requests",
+      message: "You’ve hit the rate limit. Please try again in a minute.",
+    };
+  }
+  const friendly = toFriendlyError(err, err?.body);
   return {
     title: friendly.title,
-    message: `${friendly.message}${hint}`,
+    message: friendly.message,
     details: friendly.details,
   };
 }
@@ -79,7 +85,6 @@ export default function UploadPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     if (!file) {
       setError({ title: "No file selected", message: "Please choose a .zip project or a .tex file." });
       return;
@@ -114,7 +119,6 @@ export default function UploadPage() {
         (Array.isArray(res.warnings) ? res.warnings : res.warnings ? [res.warnings] : []) as string[];
       setWarnings(warn);
 
-      // Save to dashboard history (client-side)
       addJob({
         id: res.job_id,
         template,
@@ -129,7 +133,7 @@ export default function UploadPage() {
       setStage("processing");
       setTimeout(() => setStage("done"), 350);
     } catch (err: any) {
-      setError(humanizeError(err));
+      setError(humanize(err));
       setStage("error");
       setProgress(0);
     }
@@ -174,7 +178,6 @@ export default function UploadPage() {
           />
           <span>Fix citations</span>
         </label>
-
         <label className="check">
           <input
             type="checkbox"
@@ -191,6 +194,7 @@ export default function UploadPage() {
         accept=".zip,.tex"
         label="Upload a .zip (project) or a single .tex"
         note={file ? `Selected: ${file.name}` : "Drag & drop here, or choose a file."}
+        maxSizeBytes={25 * 1024 * 1024}
       />
 
       {/* Progress + cancel */}
@@ -241,15 +245,12 @@ export default function UploadPage() {
       {stage === "done" && (
         <div className="success">
           <div className="kv" style={{ marginBottom: 10 }}>✅ Your formatted project is ready.</div>
-
-          {/* Badges for template & options */}
           <div className="badges">
             <span className="badge">{TEMPLATES.find(t => t.value === template)?.label || template}</span>
             {optionBadges(options).map((b, i) => (
               <span key={i} className="badge">{b}</span>
             ))}
           </div>
-
           <div className="rowBtns" style={{ marginTop: 12 }}>
             {downloadUrl && (
               <a className="btn" href={downloadUrl} target="_blank" rel="noreferrer">
@@ -257,9 +258,7 @@ export default function UploadPage() {
               </a>
             )}
             <a className="ghost" href="/dashboard">View in Dashboard</a>
-            <button className="ghost" onClick={reset} type="button">
-              Format another
-            </button>
+            <button className="ghost" onClick={reset} type="button">Format another</button>
           </div>
         </div>
       )}
@@ -276,23 +275,13 @@ export default function UploadPage() {
         h1 { font-size: 28px; font-weight: 800; margin: 0 0 16px; }
         .field { margin: 0 0 16px; }
         label { font-weight: 600; display: block; margin: 0 0 6px; }
-        select {
-          width: 100%; padding: 10px; border-radius: 10px;
-          background: #0c0c0c; color: #e6e6e6; border: 1px solid #2a2a2a;
-        }
+        select { width: 100%; padding: 10px; border-radius: 10px; background: #0c0c0c; color: #e6e6e6; border: 1px solid #2a2a2a; }
         .row { display: flex; gap: 24px; align-items: center; margin: 8px 0 6px; flex-wrap: wrap; }
         .check { display: inline-flex; gap: 8px; align-items: center; color: #d4d4d8; }
         .progressWrap { margin-top: 16px; }
-        .progressBar {
-          width: 100%; height: 12px; background: #151515; border-radius: 999px; overflow: hidden;
-          box-shadow: inset 0 0 0 1px #262626;
-        }
+        .progressBar { width: 100%; height: 12px; background: #151515; border-radius: 999px; overflow: hidden; box-shadow: inset 0 0 0 1px #262626; }
         .bar { height: 100%; position: relative; background: linear-gradient(90deg, #4ade80, #60a5fa); transition: width 120ms ease; }
-        .stripes {
-          position: absolute; inset: 0;
-          background-image: linear-gradient(45deg, rgba(255,255,255,.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.18) 75%, transparent 75%, transparent);
-          background-size: 22px 22px; animation: move .8s linear infinite; opacity: .6;
-        }
+        .stripes { position: absolute; inset: 0; background-image: linear-gradient(45deg, rgba(255,255,255,.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.18) 50%, rgba(255,255,255,.18) 75%, transparent 75%, transparent); background-size: 22px 22px; animation: move .8s linear infinite; opacity: .6; }
         @keyframes move { from { background-position: 0 0; } to { background-position: 22px 0; } }
         .progressMeta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; color: #d4d4d8; }
         .subtle { margin-top: 16px; opacity: .9; color: #d4d4d8; }
@@ -308,15 +297,9 @@ export default function UploadPage() {
         .btn:disabled { opacity: .7; cursor: not-allowed; }
         .ghost { padding: 9px 12px; border-radius: 10px; background: #1f2937; color: #e5e7eb; font-weight: 600; border: 1px solid #374151; cursor: pointer; }
         .badges { display: flex; gap: 8px; flex-wrap: wrap; }
-        .badge {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 6px 10px; border-radius: 999px; font-size: 12px;
-          background: #0b1f15; color: #a7f3d0; border: 1px solid #14532d;
-        }
+        .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; font-size: 12px; background: #0b1f15; color: #a7f3d0; border: 1px solid #14532d; }
         .kv { color: #d4d4d8; }
       `}</style>
     </div>
   );
 }
-
-   
