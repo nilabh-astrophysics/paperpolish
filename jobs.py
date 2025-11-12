@@ -5,8 +5,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
-
-STORE_PATH = "/tmp/jobs.json"
+STORE_PATH = "/tmp/paperpolish_jobs.json"
 
 def _load():
     if not os.path.exists(STORE_PATH):
@@ -14,20 +13,23 @@ def _load():
     try:
         with open(STORE_PATH, "r") as f:
             return json.load(f)
-    except json.JSONDecodeError:
+    except Exception:
         return {}
 
 def _save(jobs):
     with open(STORE_PATH, "w") as f:
         json.dump(jobs, f)
 
-def save_job_record(job_id: str, template: str, output_path: str):
+def save_job_record(job_id: str, template: str, output_path: str, extra: dict = None):
     jobs = _load()
     jobs[job_id] = {
+        "id": job_id,
         "template": template,
         "output_path": output_path,
-        "status": "done"
+        "status": "done",
     }
+    if extra:
+        jobs[job_id].update(extra)
     _save(jobs)
 
 @router.get("/jobs")
