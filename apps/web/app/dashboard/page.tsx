@@ -1,108 +1,157 @@
 "use client";
 
 import React from "react";
-import { listJobs, removeJob, clearJobs, type JobRecord } from "../../lib/history";
+import {
+  listJobs as localList,
+  removeJob,
+  clearJobs,
+  type JobRecord,
+} from "../../lib/history";
+import { listJobs as remoteList } from "../../lib/api"; // optional remote loader
 
 export default function DashboardPage() {
   const [rows, setRows] = React.useState<JobRecord[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => setRows(listJobs()), []);
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Try remote backend first (if implemented)
+        if (typeof remoteList === "function") {
+          try {
+            const maybe = (remoteList as any)();
+            let remoteRows: JobRecord[] | null = null;
+
+            if (maybe && typeof (maybe as any).then === "function") {
+              // remoteList is async
+              remoteRows = await (maybe as Promise<JobRecord[]>);
+            } else {
+              // remoteList returned synchronously
+              remoteRows = maybe as JobRecord[];
+            }
+
+            if (mounted && Array.isArray(remoteRows) && remoteRows.length) {
+              setRows(remoteRows);
+              setLoading(false);
+              return;
+            }
+          } catch (err) {
+            // remote failed — fall back to local
+            // console.warn("remote list failed", err);
+          }
+        }
+
+        // Fallback to local history
+        const maybeLocal = (localList as any)();
+        if (maybeLocal && typeof (maybeLocal as any).then === "function") {
+          const list = await (maybeLocal as Promise<JobRecord[]>);
+          if (mounted) setRows(list);
+        } else {
+          if (mounted) setRows(maybeLocal as JobRecord[]);
+        }
+      } catch (err: any) {
+        if (mounted) setError(err?.message || String(err));
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const del = (id: string) => {
     removeJob(id);
-    setRows(listJobs());
+    // update UI from local storage
+    try {
+      const maybe = (localList as any)();
+      if (maybe && typeof (maybe as any).then === "function") {
+        (maybe as Promise<JobRecord[]>).then((list) => setRows(list));
+      } else {
+        setRows(maybe as JobRecord[]);
+      }
+    } catch {
+      // fallback: filter state
+      setRows((r) => r.filter((x) => x.id !== id));
+    }
   };
 
-  const clear = () => {
-    if (!confirm("Clear all locally saved jobs?")) return;
+  const clearAll = () => {
     clearJobs();
     setRows([]);
   };
 
   return (
-    <div className="wrap">
-      <h1>Jobs & Downloads</h1>
+    <main style={{ padding: 24 }}>
+      <h1>Dashboard</h1>
 
-      {rows.length === 0 ? (
-        <div className="empty">
-          No previous jobs yet. Upload a project on the{" "}
-          <a href="/upload" className="link">Upload</a> page.
-        </div>
+      {loading ? (
+        <div>Loading…</div>
+      ) : error ? (
+        <div style={{ color: "salmon" }}>Error: {error}</div>
+      ) : rows.length === 0 ? (
+        <div>No jobs yet.</div>
       ) : (
-        <>
-          <div className="toolbar">
-            <a className="ghost" href="/upload">New job</a>
-            <button className="ghost" onClick={() => setRows(listJobs())}>Refresh</button>
-            <button className="danger" onClick={clear}>Clear All</button>
-          </div>
-
-          <div className="table">
-            <div className="thead">
-              <div>When</div>
-              <div>File</div>
-              <div>Template</div>
-              <div>Options</div>
-              <div>Warnings</div>
-              <div>Actions</div>
-            </div>
-
-            {rows.map((r) => (
-              <div className="row" key={r.id}>
-                <div>{new Date(r.createdAt).toLocaleString()}</div>
-                <div title={r.filename || ""}>
-                  {r.filename ?? "—"} {r.size ? `(${(r.size / 1024).toFixed(1)} KB)` : ""}
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                border: "1px solid #333",
+                padding: 12,
+                borderRadius: 6,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: "600" }}>{r.filename || "Untitled"}</div>
+                <div style={{ fontSize: 12, color: "#aaa" }}>
+                  {new Date(r.createdAt).toLocaleString()} • {r.template || ""}
                 </div>
-                <div>{r.template}</div>
-                <div>{r.options.join(", ") || "—"}</div>
-                <div>
-                  {r.warnings?.length ? (
-                    <details>
-                      <summary>{r.warnings.length} warning(s)</summary>
-                      <ul>
-                        {r.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                      </ul>
-                    </details>
-                  ) : "—"}
-                </div>
-                <div className="actions">
-                  <a className="btn" href={r.downloadUrl} target="_blank" rel="noreferrer">Download</a>
-                  <button className="ghost" onClick={() => del(r.id)}>Remove</button>
-                </div>
+                {r.warnings && r.warnings.length > 0 && (
+                  <div style={{ color: "orange", fontSize: 12 }}>
+                    {r.warnings.length} warnings
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                {r.downloadUrl ? (
+                  <a
+                    href={r.downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ padding: "6px 10px", background: "#0b74ff", color: "#fff", borderRadius: 6, textDecoration: "none" }}
+                  >
+                    Download
+                  </a>
+                ) : null}
+
+                <button onClick={() => del(r.id)} style={{ padding: "6px 10px" }}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
-      <style jsx>{`
-        .wrap { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
-        h1 { font-size: 28px; font-weight: 800; margin: 0 0 16px; }
-        .link { color: #93c5fd; text-decoration: underline; }
-        .empty { opacity: 0.85; padding: 16px; border: 1px dashed #333; border-radius: 12px; }
-        .toolbar { display: flex; gap: 10px; margin: 12px 0 16px; flex-wrap: wrap; }
-        .table { display: grid; gap: 6px; }
-        .thead, .row {
-          display: grid;
-          grid-template-columns: 1.2fr 1.4fr 1fr 1.1fr 1.4fr 1.1fr;
-          gap: 8px;
-          align-items: center;
-        }
-        .thead { font-weight: 800; opacity: 0.9; padding: 4px 0; }
-        .row { padding: 10px; border: 1px solid #222; border-radius: 12px; background: #0c0c0c; }
-        .actions { display: flex; gap: 8px; align-items: center; }
-        .btn {
-          padding: 8px 12px; border-radius: 10px; border: none;
-          background: #2563eb; color: #fff; font-weight: 700; cursor: pointer;
-        }
-        .ghost {
-          padding: 7px 10px; border-radius: 10px; background: #1f2937;
-          color: #e5e7eb; font-weight: 600; border: 1px solid #374151; cursor: pointer;
-        }
-        .danger {
-          padding: 7px 10px; border-radius: 10px; background: #7f1d1d;
-          color: #fde8e8; font-weight: 700; border: 1px solid #b91c1c; cursor: pointer;
-        }
-      `}</style>
-    </div>
+      <div style={{ marginTop: 16 }}>
+        <button onClick={clearAll} disabled={rows.length === 0}>
+          Clear all
+        </button>
+      </div>
+    </main>
   );
 }
