@@ -1,114 +1,68 @@
 // apps/web/lib/api.ts
-/* Public API wrapper used by front-end pages (upload, dashboard, etc.) */
+// Small client wrapper used by the dashboard to call backend endpoints.
+// Exports named functions that return JSON-friendly data.
 
 export type JobRecord = {
   id: string;
-  createdAt?: number | string;
-  filename?: string;
+  createdAt: number;
+  filename: string;
   size?: number;
   template?: string;
   options?: string[];
   warnings?: string[];
   status?: string;
-  download_url?: string;
-  output_path?: string;
-  [k: string]: any;
+  download_url?: string | null;
 };
 
-const envBase = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/$/, "");
-export const API_BASE = envBase || (typeof window !== "undefined" ? `${window.location.origin}` : "http://localhost:8000");
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "") || "";
 
-/** internal helper to build full url */
-function url(path = "") {
-  if (!path.startsWith("/")) path = "/" + path;
-  return `${API_BASE}${path}`;
-}
-
-/** Generic fetch wrapper that throws an Error with server message on non-2xx */
-async function doFetch(input: RequestInfo, init?: RequestInit) {
-  const res = await fetch(input, init);
+async function fetchJson(url: string, opts: RequestInit = {}) {
+  const res = await fetch(url, opts);
+  const text = await res.text();
   let body;
   try {
-    body = await res.json().catch(() => null);
-  } catch (e) {
-    body = null;
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
   }
   if (!res.ok) {
-    const msg = body && body.detail ? body.detail : body || `HTTP ${res.status}`;
-    const err: any = new Error(String(msg));
+    const err = new Error((body && (body.message || body.detail)) || `Request failed ${res.status}`);
+    // @ts-ignore
     err.status = res.status;
+    // @ts-ignore
     err.body = body;
     throw err;
   }
   return body;
 }
 
-/** Upload a zip/.tex file (FormData) — returns job { job_id, download_url } or server response */
-export async function uploadArchive(file: File, template = "aastex", options: string[] = []) {
-  const fd = new FormData();
-  fd.append("file", file, file.name);
-  fd.append("template", template);
-  if (options && options.length) fd.append("options", JSON.stringify(options));
-
-  // Post to /format (backend expects /format)
-  const endpoint = url("/format");
-  const res = await fetch(endpoint, {
-    method: "POST",
-    body: fd,
-    // do NOT set Content-Type for FormData
-  });
-
-  if (!res.ok) {
-    let errBody;
-    try { errBody = await res.json(); } catch (e) { errBody = await res.text().catch(() => null); }
-    const msg = (errBody && errBody.detail) || (errBody && errBody.message) || `Upload failed ${res.status}`;
-    const e = new Error(msg);
-    (e as any).status = res.status;
-    (e as any).body = errBody;
-    throw e;
-  }
-
-  // parse JSON
-  const body = await res.json();
-  return body;
+/** listJobs - call remote API to get jobs. */
+export async function listJobs(): Promise<JobRecord[]> {
+  const base = API_BASE || "/api";
+  const url = `${base}/jobs`;
+  const body = await fetchJson(url, { method: "GET", headers: { "Accept": "application/json" } });
+  if (!Array.isArray(body)) return [];
+  return body as JobRecord[];
 }
 
-/** convenience wrapper that sends JSON to /jobs to create a job record (if used) */
-export async function createJob(job: JobRecord) {
-  return doFetch(url("/jobs"), {
+/** createJob - send a job to the backend (example) */
+export async function createJob(payload: Partial<JobRecord>): Promise<JobRecord> {
+  const base = API_BASE || "/api";
+  return await fetchJson(`${base}/jobs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(job),
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify(payload),
   });
 }
 
-/** list jobs from the backend /jobs endpoint (if present) */
-export async function listJobs(): Promise<Record<string, JobRecord> | JobRecord[]> {
-  const body = await doFetch(url("/jobs"));
-  // backend may return shape { ok: true, jobs: {...} } or array
-  if (body && body.jobs) return body.jobs;
-  return body;
-}
-
-/** health check */
-export async function health() {
+/** health helper for a simple check */
+export async function health(): Promise<{ ok: boolean; status?: number; detail?: any }> {
   try {
-    const body = await doFetch(url("/health"));
-    return body;
-  } catch (e) {
-    return { ok: false, error: e.message || String(e) };
+    const base = API_BASE || "/api";
+    const res = await fetch(`${base}/health`);
+    return { ok: res.ok, status: res.status };
+  } catch (err) {
+    return { ok: false, detail: err };
   }
 }
 
-/** download helper - returns a URL you can use to download or fetch */
-export function downloadUrlFor(jobId: string) {
-  return url(`/download/${encodeURIComponent(jobId)}`);
-}
-
-export default {
-  uploadArchive,
-  createJob,
-  listJobs,
-  health,
-  downloadUrlFor,
-};
