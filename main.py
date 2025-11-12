@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -32,17 +32,19 @@ app.add_middleware(
 
 # ------------------------------------------------------------
 # Lightweight request logging (optional but helpful)
+# Safe: handles case where call_next raises before response is assigned.
 # ------------------------------------------------------------
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # Keep it short to avoid noisy logs
     path = request.url.path
+    response = None
     try:
         response = await call_next(request)
         return response
     finally:
         # Render/other providers show stdout in logs
-        print(f"{request.method} {path} -> {getattr(response, 'status_code', '?')}")
+        status = getattr(response, "status_code", "?")
+        print(f"{request.method} {path} -> {status}")
 
 # ------------------------------------------------------------
 # Routers (each import is optional)
@@ -109,9 +111,27 @@ if jobs_router:
 async def health_fallback():
     return {"ok": True, "service": "paperpolish-api"}
 
+# Render (platform) expects /health by default in many setups.
+# Provide both GET and HEAD for /health so internal checks succeed.
+@app.get("/health", include_in_schema=False)
+async def render_health_get():
+    return {"ok": True, "service": "paperpolish-api"}
+
+@app.head("/health", include_in_schema=False)
+async def render_health_head():
+    # FastAPI will return 200 for HEAD; empty body is okay for health probe.
+    return
+
+# Some providers may probe the root with HEAD; explicitly accept HEAD on "/"
+@app.get("/")
+async def root():
+    return {"name": "PaperPolish API", "docs": "/docs", "health": "/api/health"}
+
 @app.head("/", include_in_schema=False)
 async def head_root():
+    # Empty 200 response for HEAD /
     return
+
 # ------------------------------------------------------------
 # Error normalization
 # ------------------------------------------------------------
@@ -121,7 +141,3 @@ async def http_exc_handler(_: Request, exc: HTTPException):
         status_code=exc.status_code,
         content={"detail": exc.detail or "HTTP error", "code": exc.status_code},
     )
-
-@app.get("/")
-async def root():
-    return {"name": "PaperPolish API", "docs": "/docs", "health": "/api/health"}
