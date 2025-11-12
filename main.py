@@ -1,4 +1,3 @@
-# main.py
 from __future__ import annotations
 
 import os
@@ -37,12 +36,14 @@ app.add_middleware(
 async def log_requests(request: Request, call_next):
     # Keep it short to avoid noisy logs
     path = request.url.path
+    response = None
     try:
         response = await call_next(request)
         return response
     finally:
-        # Render/other providers show stdout in logs
-        print(f"{request.method} {path} -> {getattr(response, 'status_code', '?')}")
+        # Guard in case call_next raised before producing a response
+        status = getattr(response, "status_code", "ERR")
+        print(f"{request.method} {path} -> {status}")
 
 # ------------------------------------------------------------
 # Routers (each import is optional)
@@ -107,6 +108,11 @@ if jobs_router:
 # ------------------------------------------------------------
 @app.get("/api/health")
 async def health_fallback():
+    return {"ok": True, "service": "paperpolish-api"}
+
+# Also expose root-level /health so platform checks (Render, etc.) succeed
+@app.get("/health")
+async def health_root():
     return {"ok": True, "service": "paperpolish-api"}
 
 # ------------------------------------------------------------
