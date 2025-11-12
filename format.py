@@ -13,21 +13,31 @@ router = APIRouter()
 @router.post("/format")
 async def format_tex(
     request: Request,
-    archive: UploadFile = File(...),
+    # Accept either form field name "archive" or "file" (some clients use different names)
+    archive: UploadFile | None = File(None),
+    file: UploadFile | None = File(None),
     template: str = Form("aastex"),
-    options: str = Form("")
+    options: str = Form(""),
 ):
-    # Only .zip (project) or .tex (single file)
-    if not archive.filename.endswith((".zip", ".tex")):
+    """
+    Accepts a single uploaded file (zip project or single .tex) under form field
+    'archive' OR 'file'. Returns a job_id, warnings and a download URL.
+    """
+    uploaded = archive or file
+    if uploaded is None:
+        raise HTTPException(status_code=400, detail="No file provided in 'archive' or 'file' form fields")
+
+    filename = uploaded.filename or ""
+    if not filename.lower().endswith((".zip", ".tex")):
         raise HTTPException(status_code=400, detail="Upload .zip (project) or .tex (single file)")
 
     job_id = str(uuid.uuid4())
-    logger.info(f'job_start id={job_id} file="{archive.filename}" template={template} options="{options}"')
+    logger.info(f'job_start id={job_id} file="{filename}" template={template} options="{options}"')
 
     try:
         # Run the formatter (returns list[str] warnings, and a path to a temp zip)
         warnings, tmp_zip = await process_archive(
-            archive,
+            uploaded,
             template,
             options.split(",") if options else []
         )
@@ -37,7 +47,7 @@ async def format_tex(
 
         # Save some minimal job metadata as JSON
         save_job(job_id, {
-            "filename": archive.filename,
+            "filename": filename,
             "template": template,
             "options": options,
             "zip_path": saved_path,
@@ -45,8 +55,9 @@ async def format_tex(
         })
         logger.info(f'job_zip_saved id={job_id} path="{saved_path}"')
 
-        # Build absolute download URL
-        base = str(request.base_url).rstrip("/")  # e.g. https://paperpolish-api-xxxx.onrender.com
+        # Build absolute download URL using request.base_url (keeps scheme/host)
+        base = str(request.base_url).rstrip("/")  # e.g. https://paperpolish-api-xxxx.onrender.com/
+        # Note: route for downloads may be mounted as /api/download - adjust if necessary.
         download_url = f"{base}/download/{job_id}"
 
         logger.info(f'job_done id={job_id} warnings={len(warnings)}')
@@ -58,4 +69,4 @@ async def format_tex(
 
     except Exception as e:
         logger.exception(f'job_failed id={job_id} error="{e}"')
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
