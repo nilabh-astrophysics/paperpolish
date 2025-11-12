@@ -13,10 +13,10 @@ logger.addHandler(handler)
 
 app = FastAPI(title="PaperPolish API")
 
-# CORS (allow frontend)
+# CORS - in production set allow_origins to your frontend URL only
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # update to your frontend URL later
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,10 +33,11 @@ def try_include(module_name: str):
     except Exception as e:
         logger.warning(f"Could not import {module_name}: {e}")
 
-# Import routers without prefixes
-for module in ["format", "jobs", "download"]:
+# Import routers with no prefix so routes are available at /format, /jobs, /download, etc.
+for module in ["format", "jobs"]:
     try_include(module)
 
+# Root + health
 @app.get("/")
 def root():
     return {"ok": True, "message": "PaperPolish backend running"}
