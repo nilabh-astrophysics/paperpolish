@@ -1,104 +1,108 @@
-// apps/web/app/dashboard/page.tsx
 "use client";
 
 import React from "react";
-import { listJobs as localList, removeJob, clearJobs, type JobRecord } from "../../lib/api";
+import { listJobs, removeJob, clearJobs, type JobRecord } from "../../lib/history";
 
 export default function DashboardPage() {
   const [rows, setRows] = React.useState<JobRecord[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    async function load() {
-      setError(null);
-      setLoading(true);
-      try {
-        const remote = await localList();
-        setRows(remote);
-      } catch (err: any) {
-        setError(err?.message ?? "Failed to load jobs");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
+  React.useEffect(() => setRows(listJobs()), []);
 
-  async function onRemove(id: string) {
-    try {
-      await removeJob(id);
-      setRows((r) => r.filter((x) => x.id !== id));
-    } catch (err: any) {
-      setError(err?.message ?? "Delete failed");
-    }
-  }
+  const del = (id: string) => {
+    removeJob(id);
+    setRows(listJobs());
+  };
 
-  async function onClear() {
-    try {
-      await clearJobs();
-      setRows([]);
-    } catch (err: any) {
-      setError(err?.message ?? "Clear failed");
-    }
-  }
+  const clear = () => {
+    if (!confirm("Clear all locally saved jobs?")) return;
+    clearJobs();
+    setRows([]);
+  };
 
   return (
-    <div style={{ maxWidth: 900, margin: "2rem auto", color: "white" }}>
-      <h1>Dashboard — Jobs</h1>
+    <div className="wrap">
+      <h1>Jobs & Downloads</h1>
 
-      {loading ? (
-        <div>Loading jobs…</div>
-      ) : error ? (
-        <div style={{ color: "salmon" }}>{error}</div>
+      {rows.length === 0 ? (
+        <div className="empty">
+          No previous jobs yet. Upload a project on the{" "}
+          <a href="/upload" className="link">Upload</a> page.
+        </div>
       ) : (
         <>
-          <div style={{ marginBottom: 10 }}>
-            <button onClick={onClear} style={{ padding: "6px 10px", borderRadius: 6 }}>
-              Clear all
-            </button>
+          <div className="toolbar">
+            <a className="ghost" href="/upload">New job</a>
+            <button className="ghost" onClick={() => setRows(listJobs())}>Refresh</button>
+            <button className="danger" onClick={clear}>Clear All</button>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: 8 }}>ID</th>
-                <th style={{ textAlign: "left", padding: 8 }}>File</th>
-                <th style={{ textAlign: "left", padding: 8 }}>Created</th>
-                <th style={{ padding: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #333" }}>
-                  <td style={{ padding: 8, fontFamily: "monospace", fontSize: 12 }}>{r.id}</td>
-                  <td style={{ padding: 8 }}>{r.filename ?? "-"}</td>
-                  <td style={{ padding: 8 }}>
-                    {r.created_at ? new Date(r.created_at * 1000).toLocaleString() : "-"}
-                  </td>
-                  <td style={{ padding: 8 }}>
-                    <button onClick={() => onRemove(r.id)} style={{ marginRight: 8 }}>
-                      Delete
-                    </button>
-                    {r.download_url && (
-                      <a href={r.download_url} target="_blank" rel="noreferrer">
-                        Download
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={4} style={{ padding: 12 }}>
-                    No jobs yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <div className="table">
+            <div className="thead">
+              <div>When</div>
+              <div>File</div>
+              <div>Template</div>
+              <div>Options</div>
+              <div>Warnings</div>
+              <div>Actions</div>
+            </div>
+
+            {rows.map((r) => (
+              <div className="row" key={r.id}>
+                <div>{new Date(r.createdAt).toLocaleString()}</div>
+                <div title={r.filename || ""}>
+                  {r.filename ?? "—"} {r.size ? `(${(r.size / 1024).toFixed(1)} KB)` : ""}
+                </div>
+                <div>{r.template}</div>
+                <div>{r.options.join(", ") || "—"}</div>
+                <div>
+                  {r.warnings?.length ? (
+                    <details>
+                      <summary>{r.warnings.length} warning(s)</summary>
+                      <ul>
+                        {r.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                      </ul>
+                    </details>
+                  ) : "—"}
+                </div>
+                <div className="actions">
+                  <a className="btn" href={r.downloadUrl} target="_blank" rel="noreferrer">Download</a>
+                  <button className="ghost" onClick={() => del(r.id)}>Remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
         </>
       )}
+
+      <style jsx>{`
+        .wrap { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+        h1 { font-size: 28px; font-weight: 800; margin: 0 0 16px; }
+        .link { color: #93c5fd; text-decoration: underline; }
+        .empty { opacity: 0.85; padding: 16px; border: 1px dashed #333; border-radius: 12px; }
+        .toolbar { display: flex; gap: 10px; margin: 12px 0 16px; flex-wrap: wrap; }
+        .table { display: grid; gap: 6px; }
+        .thead, .row {
+          display: grid;
+          grid-template-columns: 1.2fr 1.4fr 1fr 1.1fr 1.4fr 1.1fr;
+          gap: 8px;
+          align-items: center;
+        }
+        .thead { font-weight: 800; opacity: 0.9; padding: 4px 0; }
+        .row { padding: 10px; border: 1px solid #222; border-radius: 12px; background: #0c0c0c; }
+        .actions { display: flex; gap: 8px; align-items: center; }
+        .btn {
+          padding: 8px 12px; border-radius: 10px; border: none;
+          background: #2563eb; color: #fff; font-weight: 700; cursor: pointer;
+        }
+        .ghost {
+          padding: 7px 10px; border-radius: 10px; background: #1f2937;
+          color: #e5e7eb; font-weight: 600; border: 1px solid #374151; cursor: pointer;
+        }
+        .danger {
+          padding: 7px 10px; border-radius: 10px; background: #7f1d1d;
+          color: #fde8e8; font-weight: 700; border: 1px solid #b91c1c; cursor: pointer;
+        }
+      `}</style>
     </div>
   );
 }
