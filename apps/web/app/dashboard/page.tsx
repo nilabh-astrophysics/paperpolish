@@ -7,7 +7,7 @@ import {
   clearJobs,
   type JobRecord,
 } from "../../lib/history";
-import { listJobs as remoteList } from "../../lib/api"; // optional remote loader
+import { listJobs as remoteList } from "../../lib/api";
 
 export default function DashboardPage() {
   const [rows, setRows] = React.useState<JobRecord[]>([]);
@@ -22,32 +22,26 @@ export default function DashboardPage() {
       setError(null);
 
       try {
-        // Try remote backend first (if implemented)
+        // Prefer remote backend if available and working
         if (typeof remoteList === "function") {
           try {
             const maybe = (remoteList as any)();
-            let remoteRows: JobRecord[] | null = null;
+            const remoteRows: JobRecord[] =
+              maybe && typeof (maybe as any).then === "function"
+                ? await (maybe as Promise<JobRecord[]>)
+                : (maybe as JobRecord[]);
 
-            if (maybe && typeof (maybe as any).then === "function") {
-              // remoteList is async
-              remoteRows = await (maybe as Promise<JobRecord[]>);
-            } else {
-              // remoteList returned synchronously
-              remoteRows = maybe as JobRecord[];
-            }
-
-            if (mounted && Array.isArray(remoteRows) && remoteRows.length) {
+            if (mounted && Array.isArray(remoteRows) && remoteRows.length >= 0) {
               setRows(remoteRows);
               setLoading(false);
               return;
             }
-          } catch (err) {
-            // remote failed — fall back to local
-            // console.warn("remote list failed", err);
+          } catch {
+            // ignore remote errors and fall back to local
           }
         }
 
-        // Fallback to local history
+        // Local list (support both sync and async implementations)
         const maybeLocal = (localList as any)();
         if (maybeLocal && typeof (maybeLocal as any).then === "function") {
           const list = await (maybeLocal as Promise<JobRecord[]>);
@@ -56,7 +50,7 @@ export default function DashboardPage() {
           if (mounted) setRows(maybeLocal as JobRecord[]);
         }
       } catch (err: any) {
-        if (mounted) setError(err?.message || String(err));
+        if (mounted) setError(err?.message ?? String(err));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -71,7 +65,7 @@ export default function DashboardPage() {
 
   const del = (id: string) => {
     removeJob(id);
-    // update UI from local storage
+    // Refresh rows from local storage (handle sync/async)
     try {
       const maybe = (localList as any)();
       if (maybe && typeof (maybe as any).then === "function") {
@@ -80,7 +74,6 @@ export default function DashboardPage() {
         setRows(maybe as JobRecord[]);
       }
     } catch {
-      // fallback: filter state
       setRows((r) => r.filter((x) => x.id !== id));
     }
   };
@@ -115,7 +108,7 @@ export default function DashboardPage() {
               }}
             >
               <div>
-                <div style={{ fontWeight: "600" }}>{r.filename || "Untitled"}</div>
+                <div style={{ fontWeight: 600 }}>{r.filename || "Untitled"}</div>
                 <div style={{ fontSize: 12, color: "#aaa" }}>
                   {new Date(r.createdAt).toLocaleString()} • {r.template || ""}
                 </div>
@@ -132,7 +125,13 @@ export default function DashboardPage() {
                     href={r.downloadUrl}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ padding: "6px 10px", background: "#0b74ff", color: "#fff", borderRadius: 6, textDecoration: "none" }}
+                    style={{
+                      padding: "6px 10px",
+                      background: "#0b74ff",
+                      color: "#fff",
+                      borderRadius: 6,
+                      textDecoration: "none",
+                    }}
                   >
                     Download
                   </a>
