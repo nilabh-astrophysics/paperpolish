@@ -1,134 +1,81 @@
 // apps/web/lib/history.ts
-// Lightweight client-side job-history helpers used by dashboard/upload pages.
-//
-// Provides named exports: listJobs, listJobsLocal, saveJob, saveJobLocal,
-// removeJob, clearJobs, saveJobRemote
-// and a default export object for compatibility.
-
-import type { JobRecord as APIJobRecord } from "./api";
-import { listJobs as remoteListFn, createJob as remoteCreateJob } from "./api";
+// Lightweight history helpers used by dashboard / upload pages.
+// Provides named exports: listJobs, saveJob, removeJob, clearJobs
 
 export type JobRecord = {
   id: string;
-  filename?: string;
-  template?: string;
-  createdAt?: number | string;
-  status?: string;
+  createdAt: number;
+  filename: string;
   size?: number;
+  template?: string;
+  options?: string[]; // e.g. ["fix_citations"]
   warnings?: string[];
-  download_url?: string;
-  output_path?: string;
-  [k: string]: any;
+  status?: string; // free-form: "queued", "processing", "done", "error"
+  download_url?: string | null;
 };
 
-const STORAGE_KEY = "paperpolish_jobs_v1";
+const LS_KEY = "paperpolish:jobs:v1";
 
-/** Read local jobs from localStorage (client-only) */
-export function listJobsLocal(): Record<string, JobRecord> {
-  if (typeof window === "undefined") return {};
+/** Read list from localStorage (safely). */
+function readLocal(): JobRecord[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, JobRecord>;
-  } catch (err) {
-    console.warn("history: could not parse local jobs", err);
-    return {};
+    const raw = typeof window !== "undefined" ? localStorage.getItem(LS_KEY) : null;
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    if (Array.isArray(data)) return data;
+  } catch (e) {
+    // ignore parse errors
+  }
+  return [];
+}
+
+/** Write list to localStorage (safely). */
+function writeLocal(list: JobRecord[]) {
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LS_KEY, JSON.stringify(list));
+    }
+  } catch (e) {
+    // ignore quota errors etc.
   }
 }
 
 /**
- * listJobs(mode)
- * - mode "local" returns localStorage jobs
- * - mode "remote" tries the backend listJobs() and falls back to local on error
+ * listJobs - return the list of jobs stored locally.
+ * Keep the API async so consumers can await remote or local uniformly.
  */
-export async function listJobs(mode: "local" | "remote" = "local") {
-  if (mode === "remote") {
-    try {
-      const remote = await remoteListFn();
-      // remoteListFn may return an array or an object - normalise if needed
-      if (Array.isArray(remote)) {
-        // convert to id-keyed object for local UI convenience
-        const asObj: Record<string, JobRecord> = {};
-        for (const r of remote) {
-          if (r && (r as any).id) asObj[(r as any).id] = r as JobRecord;
-        }
-        return asObj;
-      }
-      return remote;
-    } catch (e) {
-      console.warn("history: remote list failed, falling back to local", e);
-      return listJobsLocal();
-    }
-  }
-  return listJobsLocal();
+export async function listJobs(): Promise<JobRecord[]> {
+  // small copy defensive
+  const arr = readLocal();
+  // newest first
+  return arr.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
-/** Save job to localStorage */
-export function saveJobLocal(job: JobRecord) {
-  if (typeof window === "undefined") return;
-  const jobs = listJobsLocal();
-  jobs[job.id] = job;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
-  } catch (e) {
-    console.warn("history: failed to save job locally", e);
-  }
+/**
+ * saveJob - add or replace a job record in local storage.
+ * If a job with the same id exists, it will be replaced.
+ */
+export async function saveJob(job: JobRecord): Promise<JobRecord> {
+  const list = readLocal();
+  const idx = list.findIndex((j) => j.id === job.id);
+  if (idx >= 0) list[idx] = job;
+  else list.push(job);
+  writeLocal(list);
+  return job;
 }
 
-/** Remove one job from localStorage */
-export function removeJob(id: string) {
-  if (typeof window === "undefined") return;
-  const jobs = listJobsLocal();
-  if (jobs[id]) {
-    delete jobs[id];
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
-    } catch (e) {
-      console.warn("history: failed to update localStorage after remove", e);
-    }
-  }
+/**
+ * removeJob - remove a job by id
+ */
+export async function removeJob(id: string): Promise<void> {
+  const list = readLocal().filter((j) => j.id !== id);
+  writeLocal(list);
 }
 
-/** Clear all local jobs */
-export function clearJobs() {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (e) {
-    console.warn("history: failed to clear jobs", e);
-  }
+/**
+ * clearJobs - delete all local jobs
+ */
+export async function clearJobs(): Promise<void> {
+  writeLocal([]);
 }
 
-/** Optionally push job to remote API; swallow errors (best-effort) */
-export async function saveJobRemote(job: JobRecord | APIJobRecord) {
-  try {
-    const res = await remoteCreateJob(job as any);
-    return res;
-  } catch (e) {
-    console.warn("history: remote save failed", e);
-    return null;
-  }
-}
-
-/** Combined helper: save locally then try remote */
-export async function saveJob(job: JobRecord) {
-  saveJobLocal(job);
-  try {
-    await saveJobRemote(job);
-  } catch (e) {
-    /* intentionally ignore remote failures */
-  }
-}
-
-/* default export for modules that import default */
-const _default = {
-  listJobs,
-  listJobsLocal,
-  saveJob,
-  saveJobLocal,
-  saveJobRemote,
-  removeJob,
-  clearJobs,
-};
-
-export default _default;
