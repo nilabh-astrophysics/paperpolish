@@ -1,89 +1,46 @@
-# jobs.py — simple in-memory + SQLite job registry
+# jobs.py
 import os
-import sqlite3
-import threading
+import json
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
-DB_PATH = os.getenv("JOBS_DB", "/tmp/paperpolish_jobs.db")
+router = APIRouter()
 
-_lock = threading.Lock()
+# Persistent job store file
+JOB_STORE = os.getenv("JOB_STORE", "/tmp/jobs.json")
 
-def _init_db():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                id TEXT PRIMARY KEY,
-                created_at REAL,
-                filename TEXT,
-                size INTEGER,
-                template TEXT,
-                options TEXT,
-                warnings TEXT,
-                download_url TEXT
-            )
-        """)
-        conn.commit()
+def _load_jobs():
+    if not os.path.exists(JOB_STORE):
+        return {}
+    with open(JOB_STORE, "r") as f:
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            return {}
 
-_init_db()
+def _save_jobs(jobs):
+    with open(JOB_STORE, "w") as f:
+        json.dump(jobs, f)
 
-def _row_to_dict(r):
-    return {
-        "id": r[0],
-        "created_at": r[1],
-        "filename": r[2],
-        "size": r[3],
-        "template": r[4],
-        "options": r[5].split(",") if r[5] else [],
-        "warnings": r[6].split("|||") if r[6] else [],
-        "download_url": r[7],
+def save_job_record(job_id: str, template: str, output_path: str):
+    jobs = _load_jobs()
+    jobs[job_id] = {
+        "template": template,
+        "output_path": output_path,
+        "status": "done"
     }
+    _save_jobs(jobs)
 
-@router.get("/")
+@router.get("/jobs")
 def list_jobs():
-    """Return all jobs in reverse chronological order."""
-    with _lock, sqlite3.connect(DB_PATH) as conn:
-        cur = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC")
-        return [_row_to_dict(r) for r in cur.fetchall()]
+    jobs = _load_jobs()
+    return JSONResponse({"ok": True, "jobs": jobs})
 
-@router.get("/{job_id}")
+@router.get("/jobs/{job_id}")
 def get_job(job_id: str):
-    with _lock, sqlite3.connect(DB_PATH) as conn:
-        cur = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Job not found")
-        return _row_to_dict(row)
-
-@router.post("/")
-def create_job(job: dict):
-    """Create a new job record (called by upload endpoint)."""
-    if "id" not in job or "download_url" not in job:
-        raise HTTPException(400, "Missing required fields")
-
-    fields = (
-        job["id"],
-        job.get("createdAt") or job.get("created_at"),
-        job.get("filename"),
-        job.get("size"),
-        job.get("template"),
-        ",".join(job.get("options", [])),
-        "|||".join(job.get("warnings", [])),
-        job["download_url"],
-    )
-
-    with _lock, sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            INSERT OR REPLACE INTO jobs
-            (id, created_at, filename, size, template, options, warnings, download_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, fields)
-        conn.commit()
-    return {"ok": True, "id": job["id"]}
-
-@router.delete("/{job_id}")
-def delete_job(job_id: str):
-    with _lock, sqlite3.connect(DB_PATH) as conn:
-        conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
-        conn.commit()
-    return {"ok": True}
+    jobs = _load_jobs()
+    job = jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job["download_url"] = f"/download/{job_id}"
+    return JSONResponse({"ok": True, "job_id": job_id, **job})
