@@ -1,166 +1,114 @@
 // apps/web/lib/api.ts
+/* Public API wrapper used by front-end pages (upload, dashboard, etc.) */
 
-// ====== Config ======
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8000";
-
-// ====== Types ======
-export type FormatResponse = {
-  job_id: string;
-  warnings?: string[] | string;
-  // optional extras your API may include
-  filename?: string;
-  status?: string;
-};
-
-type UploadProgressFn = (percent: number) => void;
-
-// ====== Helpers ======
-export function buildDownloadUrl(res: Pick<FormatResponse, "job_id"> | { job_id: string }) {
-  const id = res.job_id;
-  return `${API_BASE}/download/${encodeURIComponent(id)}`;
-}
-
-export function toFriendlyError(err: any, body?: any): {
-  title: string;
-  message: string;
-  details?: string;
-  status?: number;
-} {
-  // Normalize response bodies that might be JSON or text
-  const status = err?.status ?? body?.status ?? err?.response?.status;
-  const detail =
-    body?.detail ??
-    body?.message ??
-    err?.response?.data?.detail ??
-    err?.message ??
-    "Unexpected error";
-
-  let title = "Request failed";
-  if (status && status >= 500) title = "Server error";
-  else if (status && status >= 400) title = "Request error";
-
-  // Specialized hints
-  let message = String(detail);
-  if (typeof detail !== "string") {
-    try {
-      message = JSON.stringify(detail);
-    } catch {
-      message = "Unexpected error";
-    }
-  }
-
-  // Common front-end debugging hint
-  if (String(message).toLowerCase().includes("fetch") || status === 0) {
-    message += " (Check NEXT_PUBLIC_API_URL and your API CORS settings)";
-  }
-
-  return { title, message, details: typeof body === "string" ? body : undefined, status };
-}
-
-// XHR upload to allow granular progress updates and abort()
-export function uploadArchiveXHR<T = any>(
-  url: string,
-  form: FormData,
-  onProgress?: UploadProgressFn,
-  signal?: AbortSignal
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-
-    xhr.open("POST", url, true);
-
-    xhr.upload.onprogress = (evt) => {
-      if (!onProgress || !evt.lengthComputable) return;
-      const pct = Math.max(1, Math.min(99, Math.round((evt.loaded / evt.total) * 100)));
-      onProgress(pct);
-    };
-
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState !== 4) return;
-
-      const contentType = xhr.getResponseHeader("Content-Type") || "";
-      const status = xhr.status;
-
-      let data: any = xhr.responseText;
-      if (contentType.includes("application/json")) {
-        try {
-          data = JSON.parse(xhr.responseText || "{}");
-        } catch {
-          // ignore
-        }
-      }
-
-      if (status >= 200 && status < 300) {
-        // Force 100% on success
-        if (onProgress) onProgress(100);
-        resolve(data as T);
-      } else {
-        // Attach status + parsed body for nicer UI messages
-        const error: any = new Error(
-          data?.detail || data?.message || `Upload failed with status ${status}`
-        );
-        error.status = status;
-        error.body = data;
-        reject(error);
-      }
-    };
-
-    xhr.onerror = () => {
-      const error: any = new Error("Network error");
-      error.status = 0;
-      reject(error);
-    };
-
-    if (signal) {
-      signal.addEventListener("abort", () => {
-        try {
-          xhr.abort();
-        } catch {}
-        const error: any = new Error("Upload aborted");
-        error.status = 0;
-        reject(error);
-      });
-    }
-
-    xhr.send(form);
-  });
-}
-
-// ====== Jobs API (backend persistence) ======
-export async function listJobs() {
-  const res = await fetch(`${API_BASE}/jobs`, { cache: "no-store" });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw { status: res.status, message: "Jobs list failed", body: text };
-  }
-  return res.json();
-}
-
-export async function createJob(job: {
+export type JobRecord = {
   id: string;
-  createdAt: number;
+  createdAt?: number | string;
   filename?: string;
   size?: number;
-  template: string;
-  options: string[];
+  template?: string;
+  options?: string[];
   warnings?: string[];
-  download_url: string;
-}) {
-  const res = await fetch(`${API_BASE}/jobs`, {
+  status?: string;
+  download_url?: string;
+  output_path?: string;
+  [k: string]: any;
+};
+
+const envBase = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/$/, "");
+export const API_BASE = envBase || (typeof window !== "undefined" ? `${window.location.origin}` : "http://localhost:8000");
+
+/** internal helper to build full url */
+function url(path = "") {
+  if (!path.startsWith("/")) path = "/" + path;
+  return `${API_BASE}${path}`;
+}
+
+/** Generic fetch wrapper that throws an Error with server message on non-2xx */
+async function doFetch(input: RequestInfo, init?: RequestInit) {
+  const res = await fetch(input, init);
+  let body;
+  try {
+    body = await res.json().catch(() => null);
+  } catch (e) {
+    body = null;
+  }
+  if (!res.ok) {
+    const msg = body && body.detail ? body.detail : body || `HTTP ${res.status}`;
+    const err: any = new Error(String(msg));
+    err.status = res.status;
+    err.body = body;
+    throw err;
+  }
+  return body;
+}
+
+/** Upload a zip/.tex file (FormData) — returns job { job_id, download_url } or server response */
+export async function uploadArchive(file: File, template = "aastex", options: string[] = []) {
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  fd.append("template", template);
+  if (options && options.length) fd.append("options", JSON.stringify(options));
+
+  // Post to /format (backend expects /format)
+  const endpoint = url("/format");
+  const res = await fetch(endpoint, {
+    method: "POST",
+    body: fd,
+    // do NOT set Content-Type for FormData
+  });
+
+  if (!res.ok) {
+    let errBody;
+    try { errBody = await res.json(); } catch (e) { errBody = await res.text().catch(() => null); }
+    const msg = (errBody && errBody.detail) || (errBody && errBody.message) || `Upload failed ${res.status}`;
+    const e = new Error(msg);
+    (e as any).status = res.status;
+    (e as any).body = errBody;
+    throw e;
+  }
+
+  // parse JSON
+  const body = await res.json();
+  return body;
+}
+
+/** convenience wrapper that sends JSON to /jobs to create a job record (if used) */
+export async function createJob(job: JobRecord) {
+  return doFetch(url("/jobs"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(job),
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw { status: res.status, message: "Job save failed", body };
-  }
-  return res.json();
 }
 
-// (Optional) simple health check helper
-export async function health() {
-  const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
-  return res.ok ? res.json() : { ok: false, status: res.status };
+/** list jobs from the backend /jobs endpoint (if present) */
+export async function listJobs(): Promise<Record<string, JobRecord> | JobRecord[]> {
+  const body = await doFetch(url("/jobs"));
+  // backend may return shape { ok: true, jobs: {...} } or array
+  if (body && body.jobs) return body.jobs;
+  return body;
 }
+
+/** health check */
+export async function health() {
+  try {
+    const body = await doFetch(url("/health"));
+    return body;
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
+/** download helper - returns a URL you can use to download or fetch */
+export function downloadUrlFor(jobId: string) {
+  return url(`/download/${encodeURIComponent(jobId)}`);
+}
+
+export default {
+  uploadArchive,
+  createJob,
+  listJobs,
+  health,
+  downloadUrlFor,
+};
