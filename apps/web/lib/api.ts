@@ -1,63 +1,166 @@
 // apps/web/lib/api.ts
-// Option B: use runtime env NEXT_PUBLIC_API_BASE if provided.
-// If not provided it will fall back to "/api" (useful if you later choose a same-origin proxy).
 
-export type JobRecord = {
-  id: string;
-  created_at: number;
-  filename?: string | null;
-  size?: number | null;
-  template?: string | null;
-  options?: string | null;
-  warnings?: string | null;
-  download_url?: string | null;
+// ====== Config ======
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8000";
+
+// ====== Types ======
+export type FormatResponse = {
+  job_id: string;
+  warnings?: string[] | string;
+  // optional extras your API may include
+  filename?: string;
+  status?: string;
 };
 
-// Use the value from NEXT_PUBLIC_API_BASE (set in Vercel/Netlify/Render),
-// otherwise default to same-origin /api
-const BASE = (typeof window !== "undefined" && (process.env.NEXT_PUBLIC_API_BASE || "/api")) ||
-             (process.env.NEXT_PUBLIC_API_BASE || "/api");
+type UploadProgressFn = (percent: number) => void;
 
-function join(path: string) {
-  // ensure no double slashes
-  if (!path) return BASE;
-  if (BASE.endsWith("/") && path.startsWith("/")) return BASE + path.slice(1);
-  if (!BASE.endsWith("/") && !path.startsWith("/")) return BASE + "/" + path;
-  return BASE + path;
+// ====== Helpers ======
+export function buildDownloadUrl(res: Pick<FormatResponse, "job_id"> | { job_id: string }) {
+  const id = res.job_id;
+  return `${API_BASE}/download/${encodeURIComponent(id)}`;
 }
 
-async function request<T>(path: string, opts: RequestInit = {}) {
-  const url = join(path);
-  const res = await fetch(url, opts);
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+export function toFriendlyError(err: any, body?: any): {
+  title: string;
+  message: string;
+  details?: string;
+  status?: number;
+} {
+  // Normalize response bodies that might be JSON or text
+  const status = err?.status ?? body?.status ?? err?.response?.status;
+  const detail =
+    body?.detail ??
+    body?.message ??
+    err?.response?.data?.detail ??
+    err?.message ??
+    "Unexpected error";
+
+  let title = "Request failed";
+  if (status && status >= 500) title = "Server error";
+  else if (status && status >= 400) title = "Request error";
+
+  // Specialized hints
+  let message = String(detail);
+  if (typeof detail !== "string") {
+    try {
+      message = JSON.stringify(detail);
+    } catch {
+      message = "Unexpected error";
+    }
   }
-  return (await res.json()) as T;
+
+  // Common front-end debugging hint
+  if (String(message).toLowerCase().includes("fetch") || status === 0) {
+    message += " (Check NEXT_PUBLIC_API_URL and your API CORS settings)";
+  }
+
+  return { title, message, details: typeof body === "string" ? body : undefined, status };
 }
 
-/** Upload & format endpoint (POST multipart form) */
-export async function formatFile(form: FormData) {
-  const url = join("/format"); // backend endpoint should be /format (root)
-  const res = await fetch(url, { method: "POST", body: form });
+// XHR upload to allow granular progress updates and abort()
+export function uploadArchiveXHR<T = any>(
+  url: string,
+  form: FormData,
+  onProgress?: UploadProgressFn,
+  signal?: AbortSignal
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    xhr.open("POST", url, true);
+
+    xhr.upload.onprogress = (evt) => {
+      if (!onProgress || !evt.lengthComputable) return;
+      const pct = Math.max(1, Math.min(99, Math.round((evt.loaded / evt.total) * 100)));
+      onProgress(pct);
+    };
+
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== 4) return;
+
+      const contentType = xhr.getResponseHeader("Content-Type") || "";
+      const status = xhr.status;
+
+      let data: any = xhr.responseText;
+      if (contentType.includes("application/json")) {
+        try {
+          data = JSON.parse(xhr.responseText || "{}");
+        } catch {
+          // ignore
+        }
+      }
+
+      if (status >= 200 && status < 300) {
+        // Force 100% on success
+        if (onProgress) onProgress(100);
+        resolve(data as T);
+      } else {
+        // Attach status + parsed body for nicer UI messages
+        const error: any = new Error(
+          data?.detail || data?.message || `Upload failed with status ${status}`
+        );
+        error.status = status;
+        error.body = data;
+        reject(error);
+      }
+    };
+
+    xhr.onerror = () => {
+      const error: any = new Error("Network error");
+      error.status = 0;
+      reject(error);
+    };
+
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        try {
+          xhr.abort();
+        } catch {}
+        const error: any = new Error("Upload aborted");
+        error.status = 0;
+        reject(error);
+      });
+    }
+
+    xhr.send(form);
+  });
+}
+
+// ====== Jobs API (backend persistence) ======
+export async function listJobs() {
+  const res = await fetch(`${API_BASE}/jobs`, { cache: "no-store" });
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Format failed ${res.status}: ${body}`);
+    const text = await res.text().catch(() => "");
+    throw { status: res.status, message: "Jobs list failed", body: text };
   }
-  // if backend returns JSON with job info or download_url
   return res.json();
 }
 
-/** Jobs API */
-export async function listJobs(): Promise<JobRecord[]> {
-  return request<JobRecord[]>("/jobs");
+export async function createJob(job: {
+  id: string;
+  createdAt: number;
+  filename?: string;
+  size?: number;
+  template: string;
+  options: string[];
+  warnings?: string[];
+  download_url: string;
+}) {
+  const res = await fetch(`${API_BASE}/jobs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(job),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw { status: res.status, message: "Job save failed", body };
+  }
+  return res.json();
 }
-export async function removeJob(id: string) {
-  return request<void>(`/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-export async function clearJobs() {
-  return request<void>("/jobs/clear", { method: "POST" });
-}
-export async function getJob(id: string): Promise<JobRecord> {
-  return request<JobRecord>(`/jobs/${encodeURIComponent(id)}`);
+
+// (Optional) simple health check helper
+export async function health() {
+  const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+  return res.ok ? res.json() : { ok: false, status: res.status };
 }
