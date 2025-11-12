@@ -1,130 +1,82 @@
-from __future__ import annotations
-
-import os
-from typing import List
-
+# main.py
+import logging
+import sys
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-# ------------------------------------------------------------
-# App
-# ------------------------------------------------------------
-app = FastAPI(title="PaperPolish API", version="0.1.0")
+logger = logging.getLogger("paperpolish")
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+logger.addHandler(handler)
 
-# CORS: comma-separated list in ALLOW_ORIGINS (empty means "*")
-def _parse_origins(env_val: str | None) -> List[str]:
-    if not env_val:
-        return ["*"]
-    items = [s.strip() for s in env_val.split(",")]
-    return [it for it in items if it]
+app = FastAPI(title="PaperPolish API")
 
-origins = _parse_origins(os.getenv("ALLOW_ORIGINS"))
-
+# CORS - allow your frontend origins during testing (update in prod)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # change to exact origin(s) in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ------------------------------------------------------------
-# Lightweight request logging (optional but helpful)
-# ------------------------------------------------------------
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    # Keep it short to avoid noisy logs
-    path = request.url.path
-    response = None
+# Attempt to import and mount known routers gracefully
+def try_include(module_name: str, variable_name: str = "router"):
+    """
+    Try to import module_name and include the attribute variable_name if present.
+    Returns True if included; False otherwise.
+    """
     try:
-        response = await call_next(request)
-        return response
-    finally:
-        # Guard in case call_next raised before producing a response
-        status = getattr(response, "status_code", "ERR")
-        print(f"{request.method} {path} -> {status}")
+        mod = __import__(module_name, fromlist=[variable_name])
+        router = getattr(mod, variable_name, None)
+        if router is not None:
+            app.include_router(router)
+            logger.info(f"Including router from {module_name}.{variable_name}")
+            return True
+        else:
+            logger.warning(f"{module_name} has no attribute {variable_name}")
+            return False
+    except Exception as e:
+        logger.info(f"Could not import {module_name}: {e}")
+        return False
 
-# ------------------------------------------------------------
-# Routers (each import is optional)
-# Keep names as if files are `health.py`, `format.py`, etc.
-# If a file/route is missing, the app still starts cleanly.
-# ------------------------------------------------------------
-health_router = None
-format_router = None
-compile_router = None
-download_router = None
-events_router = None
-jobs_router = None
+# Try to include the commonly present routers
+try_include("health")     # optional: health.py -> router
+try_include("format")     # expected: format.py -> router (defines /format)
+try_include("jobs")       # jobs.py -> router (prefix '/jobs')
+try_include("download")   # optional: download.py -> router (defines /download/{job_id})
+# If you add other routers (store, etc.) add try_include("store") etc.
 
-try:
-    from health import router as health_router  # type: ignore
-except Exception:
-    health_router = None
-
-try:
-    from format import router as format_router  # type: ignore
-except Exception:
-    format_router = None
-
-try:
-    from compile import router as compile_router  # type: ignore
-except Exception:
-    compile_router = None
-
-try:
-    from download import router as download_router  # type: ignore
-except Exception:
-    download_router = None
-
-try:
-    from events import router as events_router  # type: ignore
-except Exception:
-    events_router = None
-
-# If you added the tiny Jobs API (optional)
-try:
-    from jobs import router as jobs_router  # type: ignore
-except Exception:
-    jobs_router = None
-
-# Mount what exists (all under /api)
-if health_router:
-    app.include_router(health_router, prefix="/api")
-if format_router:
-    app.include_router(format_router, prefix="/api")
-if compile_router:
-    app.include_router(compile_router, prefix="/api")
-if download_router:
-    app.include_router(download_router, prefix="/api")
-if events_router:
-    app.include_router(events_router, prefix="/api")
-if jobs_router:
-    app.include_router(jobs_router, prefix="/api")
-
-# ------------------------------------------------------------
-# Always-available health endpoint (fallback)
-# (keeps uptime checks valid even if health router is absent)
-# ------------------------------------------------------------
-@app.get("/api/health")
-async def health_fallback():
-    return {"ok": True, "service": "paperpolish-api"}
-
-# Also expose root-level /health so platform checks (Render, etc.) succeed
-@app.get("/health")
-async def health_root():
-    return {"ok": True, "service": "paperpolish-api"}
-
-# ------------------------------------------------------------
-# Error normalization
-# ------------------------------------------------------------
-@app.exception_handler(HTTPException)
-async def http_exc_handler(_: Request, exc: HTTPException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail or "HTTP error", "code": exc.status_code},
-    )
+# Provide a fallback download endpoint if there's no download router
+@app.get("/download/{job_id}")
+def fallback_download(job_id: str):
+    """
+    Basic fallback so format.py's constructed download_url works even if you
+    haven't added a dedicated download router. In a production app you'd serve
+    the saved zip or redirect to the store URL.
+    """
+    # Simple informational response — replace with actual file serving if you implement it.
+    return JSONResponse({"ok": False, "detail": "Download route not implemented on this instance", "job_id": job_id})
 
 @app.get("/")
-async def root():
-    return {"name": "PaperPolish API", "docs": "/docs", "health": "/api/health"}
+def root(request: Request):
+    base = str(request.base_url).rstrip("/")
+    return JSONResponse({"ok": True, "message": "PaperPolish API running", "base_url": base})
+
+# Global exception handler — convert to JSON friendly messages
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger.warning(f"HTTPException: {exc.detail}")
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception")
+    return JSONResponse({"detail": "Internal server error"}, status_code=500)
+
+if __name__ == "__main__":
+    # Local run helper: uvicorn main:app --reload --host 0.0.0.0 --port 8000
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
