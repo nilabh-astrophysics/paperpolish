@@ -60,48 +60,83 @@ jobs_router = None
 
 try:
     from health import router as health_router  # type: ignore
-except Exception:
+    print("health router imported")
+except Exception as e:
     health_router = None
+    print(f"health router not imported: {e}")
 
 try:
     from format import router as format_router  # type: ignore
-except Exception:
+    print("format router imported")
+except Exception as e:
     format_router = None
+    print(f"format router not imported: {e}")
 
 try:
     from compile import router as compile_router  # type: ignore
-except Exception:
+    print("compile router imported")
+except Exception as e:
     compile_router = None
+    print(f"compile router not imported: {e}")
 
 try:
     from download import router as download_router  # type: ignore
-except Exception:
+    print("download router imported")
+except Exception as e:
     download_router = None
+    print(f"download router not imported: {e}")
 
 try:
     from events import router as events_router  # type: ignore
-except Exception:
+    print("events router imported")
+except Exception as e:
     events_router = None
+    print(f"events router not imported: {e}")
 
 # If you added the tiny Jobs API (optional)
 try:
     from jobs import router as jobs_router  # type: ignore
-except Exception:
+    print("jobs router imported")
+except Exception as e:
     jobs_router = None
+    print(f"jobs router not imported: {e}")
 
 # Mount what exists (all under /api)
 if health_router:
     app.include_router(health_router, prefix="/api")
+    print("mounted health router at /api")
+else:
+    print("no health router mounted")
+
 if format_router:
     app.include_router(format_router, prefix="/api")
+    print("mounted format router at /api")
+else:
+    print("no format router mounted")
+
 if compile_router:
     app.include_router(compile_router, prefix="/api")
+    print("mounted compile router at /api")
+else:
+    print("no compile router mounted")
+
 if download_router:
     app.include_router(download_router, prefix="/api")
+    print("mounted download router at /api")
+else:
+    print("no download router mounted")
+
 if events_router:
     app.include_router(events_router, prefix="/api")
+    print("mounted events router at /api")
+else:
+    print("no events router mounted")
+
 if jobs_router:
     app.include_router(jobs_router, prefix="/api")
+    print("mounted jobs router at /api")
+else:
+    print("no jobs router mounted")
 
 # ------------------------------------------------------------
 # Always-available health endpoint (fallback)
