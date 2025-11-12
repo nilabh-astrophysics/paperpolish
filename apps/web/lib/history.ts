@@ -1,6 +1,11 @@
 // apps/web/lib/history.ts
-/* lightweight client-side job history + helpers used by dashboard page */
+// Lightweight client-side job-history helpers used by dashboard/upload pages.
+//
+// Provides named exports: listJobs, listJobsLocal, saveJob, saveJobLocal,
+// removeJob, clearJobs, saveJobRemote
+// and a default export object for compatibility.
 
+import type { JobRecord as APIJobRecord } from "./api";
 import { listJobs as remoteListFn, createJob as remoteCreateJob } from "./api";
 
 export type JobRecord = {
@@ -9,64 +14,93 @@ export type JobRecord = {
   template?: string;
   createdAt?: number | string;
   status?: string;
-  output_path?: string;
+  size?: number;
+  warnings?: string[];
   download_url?: string;
+  output_path?: string;
   [k: string]: any;
 };
 
 const STORAGE_KEY = "paperpolish_jobs_v1";
 
-/** read local jobs from localStorage (client side only) */
+/** Read local jobs from localStorage (client-only) */
 export function listJobsLocal(): Record<string, JobRecord> {
   if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     return JSON.parse(raw) as Record<string, JobRecord>;
-  } catch (e) {
-    console.warn("history: could not parse local jobs", e);
+  } catch (err) {
+    console.warn("history: could not parse local jobs", err);
     return {};
   }
 }
 
-/** listJobs: accept optional mode 'local' or 'remote' - remote uses API listJobs */
+/**
+ * listJobs(mode)
+ * - mode "local" returns localStorage jobs
+ * - mode "remote" tries the backend listJobs() and falls back to local on error
+ */
 export async function listJobs(mode: "local" | "remote" = "local") {
   if (mode === "remote") {
     try {
       const remote = await remoteListFn();
+      // remoteListFn may return an array or an object - normalise if needed
+      if (Array.isArray(remote)) {
+        // convert to id-keyed object for local UI convenience
+        const asObj: Record<string, JobRecord> = {};
+        for (const r of remote) {
+          if (r && (r as any).id) asObj[(r as any).id] = r as JobRecord;
+        }
+        return asObj;
+      }
       return remote;
     } catch (e) {
-      console.warn("history: remote list failed", e);
-      // fall back to local
+      console.warn("history: remote list failed, falling back to local", e);
       return listJobsLocal();
     }
   }
   return listJobsLocal();
 }
 
+/** Save job to localStorage */
 export function saveJobLocal(job: JobRecord) {
   if (typeof window === "undefined") return;
   const jobs = listJobsLocal();
   jobs[job.id] = job;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  } catch (e) {
+    console.warn("history: failed to save job locally", e);
+  }
 }
 
-/** remove job from local storage */
-export function removeJobLocal(id: string) {
+/** Remove one job from localStorage */
+export function removeJob(id: string) {
   if (typeof window === "undefined") return;
   const jobs = listJobsLocal();
-  delete jobs[id];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+  if (jobs[id]) {
+    delete jobs[id];
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+    } catch (e) {
+      console.warn("history: failed to update localStorage after remove", e);
+    }
+  }
 }
 
-/** clear all local jobs */
-export function clearJobsLocal() {
+/** Clear all local jobs */
+export function clearJobs() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn("history: failed to clear jobs", e);
+  }
 }
 
-/** optionally persist job to remote server if available */
-export async function saveJobRemote(job: JobRecord) {
+/** Optionally push job to remote API; swallow errors (best-effort) */
+export async function saveJobRemote(job: JobRecord | APIJobRecord) {
   try {
     const res = await remoteCreateJob(job as any);
     return res;
@@ -76,24 +110,25 @@ export async function saveJobRemote(job: JobRecord) {
   }
 }
 
-/** combined save helper used by the upload page */
+/** Combined helper: save locally then try remote */
 export async function saveJob(job: JobRecord) {
   saveJobLocal(job);
   try {
     await saveJobRemote(job);
-  } catch (_) {
-    // ignore
+  } catch (e) {
+    /* intentionally ignore remote failures */
   }
 }
 
-/** exports used by dashboard/upload pages */
-export { listJobs as listJobsFromLocal as listJobsLocal }; // named alias if some imports expect it
-export default {
+/* default export for modules that import default */
+const _default = {
   listJobs,
   listJobsLocal,
   saveJob,
   saveJobLocal,
-  removeJobLocal,
-  clearJobsLocal,
   saveJobRemote,
+  removeJob,
+  clearJobs,
 };
+
+export default _default;
