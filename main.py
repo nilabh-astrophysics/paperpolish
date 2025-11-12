@@ -109,6 +109,9 @@ if jobs_router:
 async def health_fallback():
     return {"ok": True, "service": "paperpolish-api"}
 
+@app.head("/", include_in_schema=False)
+async def head_root():
+    return
 # ------------------------------------------------------------
 # Error normalization
 # ------------------------------------------------------------
