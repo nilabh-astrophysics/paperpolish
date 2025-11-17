@@ -1,4 +1,4 @@
-// lib/history.ts
+// apps/web/lib/history.ts
 export type JobRecord = {
   id: string;
   filename?: string;
