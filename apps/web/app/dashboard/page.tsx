@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx
 "use client";
 
 import React from "react";
@@ -95,54 +96,61 @@ export default function DashboardPage() {
         <div>No jobs yet.</div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
-          {rows.map((r) => (
-            <div
-              key={r.id}
-              style={{
-                border: "1px solid #333",
-                padding: 12,
-                borderRadius: 6,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600 }}>{r.filename || "Untitled"}</div>
-                <div style={{ fontSize: 12, color: "#aaa" }}>
-                  {new Date(r.createdAt).toLocaleString()} • {r.template || ""}
-                </div>
-                {r.warnings && r.warnings.length > 0 && (
-                  <div style={{ color: "orange", fontSize: 12 }}>
-                    {r.warnings.length} warnings
+          {rows.map((r) => {
+            // Support both snake_case and camelCase download fields
+            const url = (r as any).downloadUrl ?? (r as any).download_url;
+
+            return (
+              <div
+                key={r.id}
+                style={{
+                  border: "1px solid #333",
+                  padding: 12,
+                  borderRadius: 6,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600 }}>{r.filename || "Untitled"}</div>
+                  <div style={{ fontSize: 12, color: "#aaa" }}>
+                    {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                    {" • "}
+                    {r.template || ""}
                   </div>
-                )}
-              </div>
+                  {r.warnings && r.warnings.length > 0 && (
+                    <div style={{ color: "orange", fontSize: 12 }}>
+                      {r.warnings.length} warnings
+                    </div>
+                  )}
+                </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
-                {r.downloadUrl ? (
-                  <a
-                    href={r.downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      padding: "6px 10px",
-                      background: "#0b74ff",
-                      color: "#fff",
-                      borderRadius: 6,
-                      textDecoration: "none",
-                    }}
-                  >
-                    Download
-                  </a>
-                ) : null}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        padding: "6px 10px",
+                        background: "#0b74ff",
+                        color: "#fff",
+                        borderRadius: 6,
+                        textDecoration: "none",
+                      }}
+                    >
+                      Download
+                    </a>
+                  ) : null}
 
-                <button onClick={() => del(r.id)} style={{ padding: "6px 10px" }}>
-                  Delete
-                </button>
+                  <button onClick={() => del(r.id)} style={{ padding: "6px 10px" }}>
+                    Delete
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
