@@ -2,9 +2,9 @@
 "use client";
 
 import React from "react";
-import { uploadArchive } from "../../../lib/api";
-import FileDrop from "../../../components/FileDrop";
-import { saveJob } from "../../../lib/history";
+import { uploadArchive } from "../../lib/api";
+import FileDrop from "../../components/FileDrop";
+import { saveJob } from "../../lib/history";
 
 type OptionKey = "fix_citations" | "ai_grammar";
 
