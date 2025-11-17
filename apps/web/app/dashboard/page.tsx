@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx
+// apps/web/app/dashboard/page.tsx
 "use client";
 
 import React from "react";
@@ -7,8 +7,8 @@ import {
   removeJob,
   clearJobs,
   type JobRecord,
-} from "../../lib/history";
-import { listJobs as remoteList } from "../../lib/api";
+} from "../../../lib/history";
+import { listJobs as remoteList } from "../../../lib/api";
 
 export default function DashboardPage() {
   const [rows, setRows] = React.useState<JobRecord[]>([]);
@@ -22,43 +22,37 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
+      // try remote first (if available)
       try {
-        // Prefer remote backend if available and working
         if (typeof remoteList === "function") {
           try {
-            const maybe = (remoteList as any)();
-            const remoteRows: JobRecord[] =
-              maybe && typeof (maybe as any).then === "function"
-                ? await (maybe as Promise<JobRecord[]>)
-                : (maybe as JobRecord[]);
-
+            const maybe = remoteList();
+            const remoteRows: JobRecord[] = maybe && typeof (maybe as any).then === "function"
+              ? await (maybe as Promise<JobRecord[]>)
+              : (maybe as JobRecord[]);
             if (mounted && Array.isArray(remoteRows) && remoteRows.length >= 0) {
               setRows(remoteRows);
               setLoading(false);
               return;
             }
           } catch {
-            // ignore remote errors and fall back to local
+            // ignore remote errors
           }
         }
+      } catch {}
 
-        // Local list (support both sync and async implementations)
-        const maybeLocal = (localList as any)();
-        if (maybeLocal && typeof (maybeLocal as any).then === "function") {
-          const list = await (maybeLocal as Promise<JobRecord[]>);
-          if (mounted) setRows(list);
-        } else {
-          if (mounted) setRows(maybeLocal as JobRecord[]);
-        }
+      // fallback to local history
+      try {
+        const maybeLocal = localList();
+        setRows(Array.isArray(maybeLocal) ? (maybeLocal as JobRecord[]) : []);
       } catch (err: any) {
-        if (mounted) setError(err?.message ?? String(err));
+        setError(err?.message ?? String(err));
       } finally {
         if (mounted) setLoading(false);
       }
     }
 
     load();
-
     return () => {
       mounted = false;
     };
@@ -66,17 +60,7 @@ export default function DashboardPage() {
 
   const del = (id: string) => {
     removeJob(id);
-    // Refresh rows from local storage (handle sync/async)
-    try {
-      const maybe = (localList as any)();
-      if (maybe && typeof (maybe as any).then === "function") {
-        (maybe as Promise<JobRecord[]>).then((list) => setRows(list));
-      } else {
-        setRows(maybe as JobRecord[]);
-      }
-    } catch {
-      setRows((r) => r.filter((x) => x.id !== id));
-    }
+    setRows(localList());
   };
 
   const clearAll = () => {
@@ -97,7 +81,7 @@ export default function DashboardPage() {
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {
-            // DO NOT reference r.downloadUrl directly — use a tolerant accessor.
+            // Support both snake_case and camelCase download fields — DO NOT access r.downloadUrl directly
             const url = (r as any).downloadUrl ?? (r as any).download_url ?? null;
 
             return (
@@ -120,9 +104,7 @@ export default function DashboardPage() {
                     {r.template || ""}
                   </div>
                   {r.warnings && r.warnings.length > 0 && (
-                    <div style={{ color: "orange", fontSize: 12 }}>
-                      {r.warnings.length} warnings
-                    </div>
+                    <div style={{ color: "orange", fontSize: 12 }}>{r.warnings.length} warnings</div>
                   )}
                 </div>
 
