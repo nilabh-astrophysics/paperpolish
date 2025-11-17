@@ -1,3 +1,4 @@
+// app/upload/page.tsx
 "use client";
 
 import React from "react";
@@ -49,18 +50,29 @@ export default function UploadPage() {
 
     try {
       setStage("uploading");
-      const { url, warnings: warns } = await uploadArchive(file, template, Array.from(options));
+      const result = await uploadArchive(file, template, Array.from(options));
+      // backend returns something like: { job_id, warnings, download_url }
+      const url =
+        (result && (result.download_url ?? result.downloadUrl ?? result.url)) ||
+        null;
+      const warns: string[] = (result && (result.warnings ?? result.warns ?? [])) || [];
+
       setStage("processing");
       setProgress(96);
 
+      // Save both snake_case and camelCase so Dashboard can read either
       const job = {
-        downloadUrl: url,
+        id: (result && (result.job_id ?? result.jobId)) || String(Date.now()),
+        download_url: url,
+        downloadUrl: url ?? undefined,
         template,
         options: Array.from(options),
         warnings: warns ?? [],
         filename: file.name,
         size: file.size,
+        createdAt: Date.now(),
       };
+      // saveJob expects a shape used by your history; it will store in localStorage
       saveJob(job);
 
       setWarnings(warns ?? []);
