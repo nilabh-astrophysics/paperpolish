@@ -1,81 +1,92 @@
-// apps/web/lib/history.ts
-// Lightweight history helpers used by dashboard / upload pages.
-// Provides named exports: listJobs, saveJob, removeJob, clearJobs
-
+// lib/history.ts
 export type JobRecord = {
   id: string;
-  createdAt: number;
-  filename: string;
-  size?: number;
+  filename?: string;
   template?: string;
-  options?: string[]; // e.g. ["fix_citations"]
+  // backend (snake_case) and frontend (camelCase) friendly fields
+  download_url?: string;
+  downloadUrl?: string;
+  createdAt?: number | string;
   warnings?: string[];
-  status?: string; // free-form: "queued", "processing", "done", "error"
-  download_url?: string | null;
+  size?: number;
+  options?: string[]; // stored from upload form
+  [k: string]: any;
 };
 
-const LS_KEY = "paperpolish:jobs:v1";
+const KEY = "paperpolish:jobs:v1";
 
-/** Read list from localStorage (safely). */
-function readLocal(): JobRecord[] {
+/** read raw jobs array from localStorage (returns [] if none or parse error) */
+export function _readStorage(): JobRecord[] {
   try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(LS_KEY) : null;
+    if (typeof window === "undefined") return [];
+    const raw = localStorage.getItem(KEY);
     if (!raw) return [];
-    const data = JSON.parse(raw);
-    if (Array.isArray(data)) return data;
-  } catch (e) {
-    // ignore parse errors
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as JobRecord[];
+  } catch {
+    return [];
   }
-  return [];
 }
 
-/** Write list to localStorage (safely). */
-function writeLocal(list: JobRecord[]) {
+/** write job array to localStorage safely */
+export function _writeStorage(arr: JobRecord[]) {
   try {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(LS_KEY, JSON.stringify(list));
-    }
-  } catch (e) {
-    // ignore quota errors etc.
+    if (typeof window === "undefined") return;
+    localStorage.setItem(KEY, JSON.stringify(arr));
+  } catch {
+    // ignore
   }
 }
 
-/**
- * listJobs - return the list of jobs stored locally.
- * Keep the API async so consumers can await remote or local uniformly.
- */
-export async function listJobs(): Promise<JobRecord[]> {
-  // small copy defensive
-  const arr = readLocal();
-  // newest first
-  return arr.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+/** Save a job (put at start of list). Accepts partial records. */
+export function saveJob(job: Partial<JobRecord> & { id?: string }) {
+  const id = job.id ?? String(Date.now());
+  const now = Date.now();
+  const j: JobRecord = {
+    id,
+    filename: job.filename ?? "Untitled",
+    template: job.template,
+    download_url: job.download_url ?? job.downloadUrl ?? (job as any).url,
+    downloadUrl: job.downloadUrl ?? job.download_url ?? (job as any).url,
+    createdAt: job.createdAt ?? now,
+    warnings: job.warnings ?? [],
+    size: job.size,
+    options: job.options,
+    ...job,
+  };
+  const arr = _readStorage();
+  // remove existing with same id
+  const filtered = arr.filter((x) => x.id !== id);
+  filtered.unshift(j);
+  // keep reasonable history length
+  const keep = filtered.slice(0, 200);
+  _writeStorage(keep);
 }
 
-/**
- * saveJob - add or replace a job record in local storage.
- * If a job with the same id exists, it will be replaced.
- */
-export async function saveJob(job: JobRecord): Promise<JobRecord> {
-  const list = readLocal();
-  const idx = list.findIndex((j) => j.id === job.id);
-  if (idx >= 0) list[idx] = job;
-  else list.push(job);
-  writeLocal(list);
-  return job;
+/** Remove a job by id */
+export function removeJob(id: string) {
+  const arr = _readStorage();
+  const filtered = arr.filter((x) => x.id !== id);
+  _writeStorage(filtered);
 }
 
-/**
- * removeJob - remove a job by id
- */
-export async function removeJob(id: string): Promise<void> {
-  const list = readLocal().filter((j) => j.id !== id);
-  writeLocal(list);
+/** Clear all saved jobs */
+export function clearJobs() {
+  try {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(KEY);
+  } catch {
+    // ignore
+  }
 }
 
-/**
- * clearJobs - delete all local jobs
- */
-export async function clearJobs(): Promise<void> {
-  writeLocal([]);
+/** Synchronous list fetcher (keeps compatibility with code that expects sync or async) */
+export function listJobs(): JobRecord[] {
+  return _readStorage();
 }
 
+/** Async variant */
+export async function listJobsAsync(): Promise<JobRecord[]> {
+  return _readStorage();
+}
