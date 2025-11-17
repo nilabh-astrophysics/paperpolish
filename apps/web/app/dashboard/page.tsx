@@ -7,8 +7,8 @@ import {
   removeJob,
   clearJobs,
   type JobRecord,
-} from "../../../lib/history";
-import { listJobs as remoteList } from "../../../lib/api";
+} from "../../lib/history";
+import { listJobs as remoteList } from "../../lib/api";
 
 export default function DashboardPage() {
   const [rows, setRows] = React.useState<JobRecord[]>([]);
