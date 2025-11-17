@@ -1,4 +1,4 @@
-// lib/api.ts
+// apps/web/lib/api.ts
 export type JobRecord = {
   id: string;
   filename?: string;
@@ -7,14 +7,19 @@ export type JobRecord = {
   downloadUrl?: string;
   createdAt?: number | string;
   warnings?: string[];
+  size?: number;
+  options?: string[];
   [k: string]: any;
 };
 
-const defaultBase = "http://localhost:8000";
-
-function baseUrl() {
+/**
+ * Resolve base URL for backend API.
+ * If NEXT_PUBLIC_API_URL is set in the environment, use that (trim trailing slash).
+ * Otherwise return empty string so fetch('/api/...') uses the current origin (works for serverless/web-hosted API).
+ */
+function baseUrl(): string {
   const env = process.env.NEXT_PUBLIC_API_URL;
-  if (!env) return defaultBase;
+  if (!env) return "";
   return env.replace(/\/$/, "");
 }
 
@@ -22,9 +27,10 @@ function baseUrl() {
  * Fetch remote jobs. Returns [] on any error so UI can fallback to local history.
  */
 export async function listJobs(): Promise<JobRecord[]> {
-  const base = baseUrl();
+  const b = baseUrl();
+  const url = (b ? `${b}` : "") + "/api/jobs";
   try {
-    const res = await fetch(`${base}/api/jobs`, { method: "GET" });
+    const res = await fetch(url, { method: "GET" });
     if (!res.ok) return [];
     const json = await res.json();
     if (!Array.isArray(json)) return [];
@@ -35,22 +41,24 @@ export async function listJobs(): Promise<JobRecord[]> {
 }
 
 /**
- * Upload a file to /api/format.
- * Returns the parsed JSON response from the backend (job_id, warnings, download_url, etc).
+ * Upload an archive/file to the backend /api/format endpoint.
+ * Returns parsed JSON response from backend (job_id, warnings, download_url, etc.)
+ * Throws on HTTP non-OK.
  */
 export async function uploadArchive(
   file: File,
   template = "aastex",
   options: string[] = []
 ): Promise<any> {
-  const base = baseUrl();
+  const b = baseUrl();
+  const url = (b ? `${b}` : "") + "/api/format";
   const form = new FormData();
-  // backend accepts either 'file' or 'archive'
+  // backend may accept either 'file' or 'archive'
   form.append("file", file);
   form.append("template", template);
   form.append("options", options.join(","));
 
-  const res = await fetch(`${base}/api/format`, {
+  const res = await fetch(url, {
     method: "POST",
     body: form,
   });
@@ -59,5 +67,6 @@ export async function uploadArchive(
     const txt = await res.text().catch(() => "");
     throw new Error(`uploadArchive failed: ${res.status} ${res.statusText} ${txt}`);
   }
+
   return res.json();
 }
