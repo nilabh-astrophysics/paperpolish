@@ -97,8 +97,8 @@ export default function DashboardPage() {
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {
-            // Support both snake_case and camelCase download fields
-            const url = (r as any).downloadUrl ?? (r as any).download_url;
+            // DO NOT reference r.downloadUrl directly — use a tolerant accessor.
+            const url = (r as any).downloadUrl ?? (r as any).download_url ?? null;
 
             return (
               <div
