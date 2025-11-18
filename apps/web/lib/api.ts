@@ -12,20 +12,11 @@ export type JobRecord = {
   [k: string]: any;
 };
 
-/**
- * Resolve base URL for backend API.
- * If NEXT_PUBLIC_API_URL is set in the environment, use that (trim trailing slash).
- * Otherwise return empty string so fetch('/api/...') uses the current origin (works for serverless/web-hosted API).
- */
 function baseUrl(): string {
-  const env = process.env.NEXT_PUBLIC_API_URL;
-  if (!env) return "";
+  const env = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL_FULL || "";
   return env.replace(/\/$/, "");
 }
 
-/**
- * Fetch remote jobs. Returns [] on any error so UI can fallback to local history.
- */
 export async function listJobs(): Promise<JobRecord[]> {
   const b = baseUrl();
   const url = (b ? `${b}` : "") + "/api/jobs";
@@ -40,33 +31,18 @@ export async function listJobs(): Promise<JobRecord[]> {
   }
 }
 
-/**
- * Upload an archive/file to the backend /api/format endpoint.
- * Returns parsed JSON response from backend (job_id, warnings, download_url, etc.)
- * Throws on HTTP non-OK.
- */
-export async function uploadArchive(
-  file: File,
-  template = "aastex",
-  options: string[] = []
-): Promise<any> {
+export async function uploadArchive(file: File, template = "aastex", options: string[] = []): Promise<any> {
   const b = baseUrl();
   const url = (b ? `${b}` : "") + "/api/format";
   const form = new FormData();
-  // backend may accept either 'file' or 'archive'
   form.append("file", file);
   form.append("template", template);
   form.append("options", options.join(","));
 
-  const res = await fetch(url, {
-    method: "POST",
-    body: form,
-  });
-
+  const res = await fetch(url, { method: "POST", body: form });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
     throw new Error(`uploadArchive failed: ${res.status} ${res.statusText} ${txt}`);
   }
-
   return res.json();
 }
